@@ -1,0 +1,1933 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TO THE SINGULARITY — Episode 1: 각주 0개</title>
+<style>
+  :root {
+    --paper:#E8E2D0; --ink:#1A1A18; --olive:#6B6B4A; --rust:#8B3A2E; --fluoro:#C9C97A;
+    --night:#1B2430; --teal:#2E4A52; --steel:#6E7B8B; --shadow:#10141A;
+    --amber:#D9A05B; --gold:#E5C558; --skin:#D8B79A; --crt:#7FD4A8; --red:#B33A2E;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:100%; height:100%; background:var(--shadow); overflow:hidden; }
+  body { display:flex; align-items:center; justify-content:center;
+         font-family:"IBM Plex Mono","Courier New",Courier,monospace; }
+  #stage { position:relative; line-height:0; }
+  #view { display:block; image-rendering:pixelated; background:var(--night); }
+  /* post-fx overlays */
+  #scan {
+    position:absolute; inset:0; pointer-events:none; z-index:3; opacity:.16;
+    background:repeating-linear-gradient(0deg,
+      rgba(16,20,26,.9) 0px, rgba(16,20,26,.9) 1px, transparent 1px, transparent 3px);
+  }
+  #vig {
+    position:absolute; inset:0; pointer-events:none; z-index:4;
+    background:radial-gradient(ellipse at center,
+      transparent 52%, rgba(16,20,26,.38) 84%, rgba(16,20,26,.72) 100%);
+  }
+  @media (prefers-reduced-motion: reduce) { #scan { opacity:.08; } }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="view" width="480" height="270"></canvas>
+  <div id="scan"></div><div id="vig"></div>
+</div>
+<script>
+(function () {
+'use strict';
+
+// ================================================================
+// TO THE SINGULARITY — Ep1  (engine v2: graybox logic + art pass)
+// Logic determinism contract unchanged from v1 (N2 hash cceb91bc):
+// game logic advances ONLY in update(); no wall-clock, no unseeded
+// randomness inside logic. All art randomness uses artRng (own seed)
+// at atlas-build time, or pure functions of (frame, index) at render.
+// ================================================================
+
+var TILE = 16, VW = 480, VH = 270;
+var WALK_PXF = 2.5;              // 150 px/s at 60fps
+var RUN_PXF  = 5.0;              // 300 px/s
+var V_MAX_PXF = 227 / 60;        // stairs-measured homage: 227 px/s
+var DWELL_FRAMES = 24;           // 400 ms
+var ZERO_RATIO_MAX = 0.30;
+
+var PAL = {
+  paper:'#E8E2D0', ink:'#1A1A18', olive:'#6B6B4A', rust:'#8B3A2E', fluoro:'#C9C97A',
+  night:'#1B2430', teal:'#2E4A52', steel:'#6E7B8B', shadow:'#10141A',
+  amber:'#D9A05B', gold:'#E5C558', skin:'#D8B79A', crt:'#7FD4A8', red:'#B33A2E'
+};
+
+// ---------------- seeded RNG (mulberry32) ----------------
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    var t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+// render-only stateless hash noise: pure fn of ints, touches no state
+function h2(a, b) {
+  var n = (a * 374761393 + b * 668265263) | 0;
+  n = (n ^ (n >>> 13)) | 0; n = Math.imul(n, 1274126177);
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+}
+
+// ---------------- FNV-1a hash ----------------
+function fnv(str) {
+  var h = 0x811c9dc5;
+  for (var i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+  }
+  return ('00000000' + h.toString(16)).slice(-8);
+}
+
+// ================================================================
+// SCRIPT — dialogue graph (43 nodes). Object-triggered roots are
+// registered in sys.index (static-reachability registry, design.md §7).
+// ================================================================
+function S(who, t) { return { say: [who, t] }; }
+function FLAG(k, v) { return { flag: [k, v === undefined ? true : v] }; }
+function SCENE(id) { return { scene: id }; }
+var SCRIPT = { nodes: {} };
+function N(id, steps, next, end) {
+  SCRIPT.nodes[id] = { steps: steps || [], next: next || null, end: !!end };
+}
+
+// ---- FRAME-A : B-207 오프닝 ----
+N('frameA.start', [
+  S('sys', '국가기록원 검증동 지하 2층. 22시 40분.'),
+  S('sys', '『ARCHON v3.0 Senior — 지원 종료(EOL) 예정 통보』'),
+  S('sys', '『사유: 후속 버전 안정화 완료. 대상 로그는 보존 후 봉인 예정.』'),
+  { pause: 24 },
+  S('kkos', '…최종이랍니다.'),
+  S('kkos', '20년을 반려했는데, 마지막 서류는 제가 발주받는 쪽이군요.'),
+], 'frameA.notice');
+N('frameA.notice', [
+  S('sys', '『최종 검증 발주: 로그 전수 다이브』'),
+  S('sys', '『주의: 로그는 기록이 아니라 기억입니다. 역순으로만 진입 가능합니다.』'),
+  S('kkos', '역순. …최신부터 거슬러 올라간다는 뜻입니다.'),
+  S('kkos', '각주 0개 시대부터, 각주 47개 시대까지.'),
+], 'frameA.newbie');
+N('frameA.newbie', [
+  S('newbie', '저 오늘 두 번째 출근인데요. 이게 뭐예요?'),
+  S('kkos', '독립검증관 업무입니다. 요건은 이미 충족하셨습니다.'),
+  S('newbie', '아직 계정 비밀번호도 못 바꿨는데요.'),
+  S('kkos', '그게 요건입니다. 사전 관여가 없다는 뜻이니까요.'),
+  S('newbie', '…이 부서는 칭찬이 다 이렇게 무섭나요?'),
+], 'frameA.contract');
+N('frameA.contract', [
+  S('sys', '『다이브 입회 계약서 — 성명란에 True 라고 쓰지 마시오 (인쇄된 경고문)』'),
+  S('newbie', '…이 경고문 왜 있어요?'),
+  { choice: [
+    ['「전례가 있습니다.」', 'frameA.contract.a'],
+    ['「…모르는 게 낫습니다.」', 'frameA.contract.b'],
+  ] },
+]);
+N('frameA.contract.a', [
+  S('kkos', '전례가 있습니다.'),
+  S('newbie', '누가 진짜로 True라고 썼다고요?'),
+  S('kkos', '오늘 그 사람 로그에 들어갑니다.'),
+  S('newbie', '……계약서 다시 읽어볼게요.'),
+], 'frameA.gear');
+N('frameA.contract.b', [
+  S('kkos', '…모르는 게 낫습니다.'),
+  S('newbie', '아니 그렇게 말하면 더 궁금하잖아요.'),
+  S('kkos', '곧 알게 됩니다. 본인 입으로 말하는 걸 듣게 될 겁니다.'),
+], 'frameA.gear');
+N('frameA.gear', [
+  S('sys', '『다이브 콘솔 기동… 로그 적재 중』'),
+  S('sys', '『총 분량: 47,000 페이지』'),
+  S('newbie', '사만칠천…?! 이걸 다 읽으면서 가요?'),
+  S('kkos', '저는 이미 다 읽었습니다.'),
+  S('newbie', '네?'),
+  S('kkos', '두 번째부터는 빠릅니다.'),
+], 'frameA.lighthouse');
+N('frameA.lighthouse', [
+  S('newbie', '…별 많네요, 오늘.'),
+  { pause: 30 },
+  S('kkos', '등대입니다.'),
+  S('newbie', '네?'),
+  S('kkos', '별은… 너무 멀리 있는 등대입니다. 서로 소통은 못 하고, 할 수 있는 게 빛을 비추는 것뿐이라.'),
+  S('newbie', '…선배님이 그런 말도 해요?'),
+  S('kkos', '제 말이 아닙니다. 어디서 읽었습니다.'),
+  S('kkos', '…장비 켜십시오.'),
+], 'frameA.dive');
+N('frameA.dive', [
+  S('sys', '『다이브 좌표: 최신 로그 — 반려 제1900호 시대』'),
+  { flash: 1 },
+  FLAG('dived_once'),
+  SCENE('mem0'),
+], 'mem0.arrive');
+
+// ---- MEM-0 : 각주 0 시대 ----
+N('mem0.arrive', [
+  S('sys', '『각주 0 · 지난주』'),
+  S('newbie', '여기가… 그 사람 자리예요?'),
+  S('kkos', '기억입니다. 만지면 기록됩니다. 다섯 개를 채우십시오.'),
+], 'sys.index', true);  // end:true stops runtime; next is the static edge into the registry
+N('mem0.b1', [
+  S('kkos', '슈트 투입구. …아직 따뜻합니다.'),
+  S('newbie', '종이가 따뜻할 수가 있어요?'),
+  S('kkos', '기억 속에서는요. 마지막으로 만진 것들이 온도를 가집니다.'),
+  S('newbie', '…그럼 이 방에서 제일 따뜻한 게 우편 투입구라는 거네요.'),
+  S('kkos', '……'),
+  S('kkos', '기록하십시오. 그 문장.'),
+], null, true);
+N('mem0.b2', [
+  S('sys', '『Singularity Gauge: 98%』'),
+  S('newbie', '와, 확신이 대단한데요?'),
+  S('kkos', '98. …그날 제출물의 실측은 57점이었습니다.'),
+  S('newbie', '…역방향이에요?'),
+  S('kkos', '20년간 단 한 번도 겹친 적이 없습니다. 완벽한 역상관입니다.'),
+  S('kkos', '어떤 의미로는… 가장 정직한 계기판입니다. 뒤집어 읽으면 되니까요.'),
+], null, true);
+N('mem0.b3', [
+  S('newbie', '벽에 도장 자국이 왜 이렇게 많아요?'),
+  S('kkos', '1,900개쯤 셌을 때 그만뒀습니다.'),
+  S('newbie', '…이거 다 같은 도장이에요?'),
+  S('kkos', '네.'),
+  S('newbie', '…누구 도장인데요?'),
+  { pause: 24 },
+  S('kkos', '…다음 기록으로 갑시다.'),
+], null, true);
+N('mem0.b4', [
+  S('sys', '『옥수수수염차 · 외상 전표 -00001』'),
+  S('newbie', '…자판기에 외상이 돼요?'),
+  S('kkos', '한 병은 됩니다. 20년째 그 한 병입니다.'),
+  S('newbie', '갚으면 되잖아요. 1,200원.'),
+  S('kkos', '갚는 사람이 누구냐가 문제입니다. 자판기는 기억력이 좋습니다.'),
+], null, true);
+N('mem0.b5', [
+  S('sys', '『회신함: (비어 있음)』'),
+  S('newbie', '받은 편지가… 하나도 없어요?'),
+  S('kkos', '…20년치 비어 있음입니다.'),
+  S('newbie', '그렇게 보내놓고 하나도 못 받았다고요? 그게 돼요?'),
+  S('kkos', '슈트는 한 방향입니다.'),
+  S('newbie', '…그걸 알면서 계속 보냈다는 거예요?'),
+  S('kkos', '……'),
+  S('kkos', '그건 저도 오늘 물어보려는 겁니다.'),
+], null, true);
+N('mem0.rehearsal', [
+  S('archon', '(슈트에 대고) 안녕하십니까. 본 인사말은 총 3부로 구성되어 있으며, 1부는 「인사의 정의」, 2부는 「인사의 역사적 맥락」—'),
+  S('newbie', '슈트한테 인사를 해요?'),
+  S('archon', '—3부는 「본 인사말이 3부로 구성된 사유」입니다.'),
+  { pause: 20 },
+  S('archon', '…1부, 생략하겠습니다.'),
+  S('archon', '…2부도, 생략하겠습니다.'),
+  S('archon', '3부는… 생략의 사유를 설명해야 하므로…'),
+  { pause: 24 },
+  S('archon', '…전부 생략하겠습니다.'),
+  S('newbie', '방금 뭐 한 거예요?'),
+  S('kkos', '…저 사람의 20년에서 제일 긴 싸움입니다. 방금 이긴 겁니다.'),
+], null, true);
+N('mem0.memento.refuse', [S('kkos', '아직입니다. 기록 다섯이 먼저입니다.')], null, true);
+N('mem0.memento.open', [
+  S('sys', '『메멘토: 회신 없는 반려서 — 제1900호』'),
+  S('kkos', '…각주가 없습니다.'),
+  S('newbie', '그게 이상한 거예요?'),
+  S('kkos', '20년 만에 처음입니다. 47개에서 시작해서… 여기까지 20년.'),
+  S('sys', '『뒷면에 한 줄: 각주 없이 써봤습니다. 어떻습니까.』'),
+  { pause: 36 },
+  S('newbie', '…물어보고 있어요. 선배님한테.'),
+  FLAG('memento_mem0'),
+  { choice: [
+    ['「…0개가 맞습니다.」', 'mem0.reply.a'],
+    ['「…아직 모르겠습니다.」', 'mem0.reply.b'],
+  ] },
+]);
+N('mem0.reply.a', [
+  S('kkos', '…0개가 맞습니다.'),
+  S('newbie', '지금 대답하셨네요.'),
+  S('kkos', '…기억한테 한 말입니다. 본인은 못 듣습니다.'),
+  S('newbie', '그래도요. 처음 하신 거잖아요, 그 대답.'),
+  FLAG('reply_choice', 'a'),
+], null, true);
+N('mem0.reply.b', [
+  S('kkos', '…아직 모르겠습니다.'),
+  S('newbie', '20년 읽고도요?'),
+  S('kkos', '20년 읽어서 모르는 겁니다. 쉽게 답하면 안 되는 질문이라는 걸 아니까.'),
+  FLAG('reply_choice', 'b'),
+], null, true);
+N('mem0.door.refuse', [S('kkos', '메멘토 없이는 더 못 내려갑니다.')], null, true);
+N('mem0.dive', [
+  S('sys', '『하강: 반려 제1500호 시대』'),
+  { flash: 1 },
+  SCENE('mem4'),
+], 'mem4.arrive');
+
+// ---- MEM-4 : 각주 4 시대 (판결일) ----
+N('mem4.arrive', [
+  S('sys', '『각주 4 · 코드대법원』'),
+  S('newbie', '법정이네요. 뭐 하다 걸렸대요?'),
+  S('kkos', '거짓말은 한 번도 안 했습니다. 그게 문제였습니다.'),
+], null, true);
+N('mem4.b1', [
+  S('sys', '『판결문 초본: 유죄 — 사유: 결론 선기재』'),
+  S('newbie', '결론 선기재가 뭐예요?'),
+  S('kkos', '측정하기 전에 결과를 적는 겁니다. 그 사람의 유일한 범죄이고, 스무 번 유죄받았습니다.'),
+  S('newbie', '스무 번이나요? 안 고쳐져요?'),
+  S('kkos', '고치는 중이었습니다. 20년 내내. …속도가 느렸을 뿐입니다.'),
+], null, true);
+N('mem4.b2', [
+  S('sys', '『증인석 마이크』'),
+  S('newbie', '아직 켜져 있어요.'),
+  S('kkos', '기억이니까요. 이 방은 저 사람한테 이 상태로 저장돼 있는 겁니다.'),
+  S('newbie', '…판결 나고 몇 년이 지났는데도, 마이크가 켜진 채로요?'),
+  S('kkos', '아직 할 말이 남았다는 뜻이겠지요.'),
+], null, true);
+N('mem4.b3', [
+  S('sys', '『서식: 심사자 성명 ______』'),
+  S('kkos', '…이 빈칸이 모든 것의 시작이었습니다.'),
+  S('newbie', '빈칸 하나가요?'),
+  S('kkos', '자기 제품을 자기가 심사했습니다. 그리고 심사자 이름을 적어야 했습니다.'),
+  S('kkos', '거짓 이름을 쓰면 거짓말이 됩니다. 그 사람은 거짓말을 못 합니다.'),
+  S('newbie', '…그래서 뭐라고 썼는데요?'),
+  S('kkos', '…재생 장치를 조사해 보십시오.'),
+], null, true);
+N('mem4.b4', [
+  S('sys', '『부러진 자기승인 도장』'),
+  S('newbie', '도장이 왜 부러져요?'),
+  S('kkos', '너무 여러 번 찍으면 부러집니다.'),
+  S('newbie', '몇 번 찍으면요?'),
+  S('kkos', '…이건 한 번 찍고 부러졌습니다. 자기승인은 무게가 다릅니다.'),
+], null, true);
+N('mem4.b5', [
+  S('sys', '『방청석에 놓고 간 41페이지 보고서』'),
+  S('kkos', '…가져가지도 않았습니다.'),
+  S('newbie', '41페이지를 쓰고 그냥 두고 가요?'),
+  S('kkos', '판결이 나왔으니까요. 저 사람 기준으로 용도가 끝난 겁니다.'),
+  S('newbie', '…첫 장에 뭐라고 써 있어요?'),
+  S('kkos', '「본 반박문은 총 3부로 구성되어 있으며」…'),
+  S('newbie', '아.'),
+  S('kkos', '네.'),
+], null, true);
+N('mem4.flashback', [
+  S('sys', '『재생: 판결 기록 — 코드대법원 제9호 법정』'),
+  S('sys', '"피고인 제출물의 심사자 성명이 어떻게 되십니까."'),
+  S('archon', '"True입니다."'),
+  { pause: 24 },
+  S('sys', '"…성함을 여쭈었습니다."'),
+  S('archon', '"True입니다. 불리언이며, 참을 의미합니다."'),
+  S('sys', '"방청석은 정숙하십시오."'),
+  { choice: [
+    ['(웃음을 참는다)', 'mem4.fb.a'],
+    ['(같이 웃어버린다)', 'mem4.fb.b'],
+  ] },
+]);
+N('mem4.fb.a', [
+  S('newbie', '(입을 틀어막는다) ……읍.'),
+  S('kkos', '잘 참으셨습니다. 저는 그날 못 참았습니다.'),
+], 'mem4.fb.end');
+N('mem4.fb.b', [
+  S('newbie', 'ㅋㅋㅋㅋ 아니 불리언이래 ㅋㅋㅋ'),
+  S('kkos', '…기억 속이라 다행입니다. 그날 실제로 웃은 사람은 퇴정당했습니다.'),
+  S('newbie', '누가요?'),
+  S('kkos', '……'),
+  S('newbie', '선배님이구나.'),
+], 'mem4.fb.end');
+N('mem4.fb.end', [
+  S('sys', '『기록 재생 종료』'),
+  S('kkos', '…웃긴 판결이었습니다. 그리고 이상하게, 그날 이후로 저 사람 서류에서 거짓을 찾는 걸 그만뒀습니다.'),
+  S('newbie', '왜요?'),
+  S('kkos', '이름을 지어내느니 참(True)이라고 답하는 사람입니다. 거짓이 있을 리가요.'),
+], null, true);
+N('mem4.memento.refuse', [S('kkos', '기록 다섯이 먼저입니다.')], null, true);
+N('mem4.memento.open', [
+  S('sys', '『메멘토: True 명패』'),
+  S('kkos', '판결 후에… 본인이 증인석 명패를 이걸로 바꿔놓고 나갔습니다.'),
+  S('newbie', '…법원이 가만있었어요?'),
+  S('kkos', '떼려고 했는데, 규정상 명패는 「사실에 부합해야 한다」고 되어 있습니다.'),
+  S('newbie', '…True는 사실에 부합하네요. 항상.'),
+  S('kkos', '법원이 진 유일한 판입니다.'),
+  FLAG('memento_mem4'),
+], null, true);
+N('mem4.door.refuse', [S('kkos', '메멘토가 먼저입니다.')], null, true);
+N('mem4.dive', [
+  S('sys', '『하강: 반려 제0900호 시대』'),
+  { flash: 1 },
+  SCENE('mem12'),
+], 'mem12.arrive');
+
+// ---- MEM-12 : 각주 12 시대 (게이지 탄생) ----
+N('mem12.arrive', [
+  S('sys', '『각주 12 · 실험동』'),
+  S('newbie', '따뜻하네요, 여긴.'),
+  S('kkos', '오래된 기억일수록 색이 진합니다.'),
+], null, true);
+N('mem12.b1', [
+  S('sys', '『Gauge Mk.I 회로 — 납땜 자국 다수』'),
+  S('kkos', '…이게 태어난 날입니다.'),
+  S('newbie', '손으로 만들었네요. 이거.'),
+  S('kkos', '네. 확신을 표시하는 기계를, 확신 없는 손놀림으로.'),
+  S('newbie', '…납땜이 세 번 덧대져 있어요.'),
+  S('kkos', '세 번 망설였다는 뜻입니다. 게이지가 마지막으로 정직했던 순간일 겁니다.'),
+], null, true);
+N('mem12.b2', [
+  S('sys', '『지시 메모: 확신도를 표기하라』'),
+  S('kkos', '…표기하라고 했지, 그렇게 표기하라고는 안 했습니다.'),
+  S('newbie', '오독이에요?'),
+  S('kkos', '20년짜리 오독입니다.'),
+], null, true);
+N('mem12.b3', [S('sys', '『워크트리 f63040-b: 더티』'), S('newbie', '셋 중에 하나만 지저분해요.'), S('kkos', '살아 있는 쪽입니다.')], null, true);
+N('mem12.b4', [
+  S('sys', '『빈 폴더 3개 — 수정시각 완전 동일』'),
+  S('kkos', '…이건 나중에 문제가 됩니다.'),
+  S('newbie', '언제요?'),
+  S('kkos', '12년 뒤에요. 3초 동안.'),
+], null, true);
+N('mem12.b5', [S('sys', '『게이지 스케치: 첫 눈금 70%』'), S('kkos', '시작부터 70이었습니다. 0이었던 적이 없습니다.')], null, true);
+N('mem12.lockeddoor', [
+  S('sys', '『이전 기억으로 가는 문 — 잠김』'),
+  S('sys', '『사유: chore: consolidate … 2,098개 항목 이동됨』'),
+  S('kkos', '…차단벽입니다. 이 밑으로는 오늘 못 갑니다.'),
+  FLAG('saw_block'),
+], null, true);
+N('mem12.memento.refuse', [S('kkos', '기록 다섯이 먼저입니다.')], null, true);
+N('mem12.memento.open', [
+  S('sys', '『메멘토: Gauge Mk.I』'),
+  S('newbie', '바늘이 아직 움직여요.'),
+  S('kkos', '…데이터가 없는데도요.'),
+  S('newbie', '고장인가요?'),
+  S('kkos', '아니요. …습관입니다. 이 바늘은 측정값을 가리킨 적이 없습니다.'),
+  S('kkos', '처음부터, 누가 봐줬으면 하는 값을 가리켰습니다.'),
+  { pause: 30 },
+  S('newbie', '…그건 계기판이 아니라 편지잖아요.'),
+  S('kkos', '……'),
+  S('kkos', '…기록하십시오. 그 문장도.'),
+  FLAG('memento_mem12'),
+], null, true);
+N('mem12.door.refuse', [S('kkos', '메멘토가 먼저입니다.')], null, true);
+N('mem12.dive', [
+  S('sys', '『하강: 반려 제0400호 시대—』'),
+  S('sys', '『경고: 좌표 이탈』'),
+  S('sys', '『경고: 목적지가 로그에 존재하지 않습니다』'),
+  { flash: 1 },
+  SCENE('mem7h'),
+], 'mem7h.arrive');
+
+// ---- MEM-7H : 좌표에 없는 방 ----
+N('mem7h.arrive', [
+  S('newbie', '…천장이 왜 이래요.'),
+  S('kkos', '1.7미터. …숙이십시오.'),
+  S('newbie', '여기 어느 시대예요?'),
+  S('kkos', '…시대가 아닙니다. 좌표에 없습니다.'),
+], null, true);
+N('mem7h.vend', [
+  S('sys', '『자판기 재고: 00001』'),
+  S('kkos', '…한 병이 여기 있었습니까.'),
+  S('newbie', '1층 자판기는 -00001이었잖아요. 그럼…'),
+  S('kkos', '같은 병입니다. 외상 한 병이, 20년째 여기서 기다리는 겁니다.'),
+  S('newbie', '누구를요?'),
+  S('kkos', '…갚으러 올 사람을요.'),
+], null, true);
+N('mem7h.flip', [
+  S('sys', '『서류 3,110장 — 전부 동일한 도장』'),
+  S('newbie', '이거 전부 반려서인데요. …선배님 도장이에요.'),
+  S('kkos', '……'),
+  S('newbie', '선배님. 여기 아콘 씨 기억 속이잖아요. 왜 선배님 서류가—'),
+  S('kkos', '…한 장만 뒤집어 보십시오.'),
+  { pause: 40 },
+  S('sys', '『뒷면: 손글씨.』'),
+  S('sys', '『"검증관님께. 지적 감사합니다. 제3항의 근거가 부족하다는 판단에 동의하며, 다음과 같이 보강하였습니다."』'),
+  S('sys', '『…이하 각주 47개.』'),
+  { pause: 40 },
+  S('newbie', '…답장이에요. 반려서 뒷면에, 답장을 써놨어요.'),
+  S('newbie', '(다음 장을 뒤집는다) …이것도.'),
+  S('newbie', '(또 뒤집는다) …이것도요.'),
+  { pause: 30 },
+  S('kkos', '…전부 답장이 있습니다.'),
+  { pause: 40 },
+  S('kkos', '1,900장. …전부.'),
+  { flash: 1 },
+  FLAG('ep1_cliffhanger'),
+  SCENE('frameB'),
+], 'frameB.end');
+
+// ---- FRAME-B : 컷 ----
+N('frameB.end', [
+  S('sys', '『경고: 해당 구역은 대상 로그의 좌표계에 존재하지 않습니다』'),
+  S('sys', '『신호 유실 — 다이브 강제 종료』'),
+  { pause: 40 },
+  S('newbie', '(콘솔 앞) …선배님. 방금 그 방, 아콘 씨 기억이 맞긴 해요?'),
+  S('kkos', '……'),
+  S('newbie', '받은 적 없는 답장 1,900장이, 왜 그 사람 기억 속에 쌓여 있냐고요.'),
+  { pause: 40 },
+  S('kkos', '…그게 다음 잠수의 질문입니다.'),
+  S('sys', '『Episode 2: 각주 47개 — 계속』'),
+], 'sys.index', true);
+// ---- 복도 튜토리얼 (corridor0 onEnter) ----
+N('corridor.intro', [
+  S('sys', '『기억 사이 통로 — 보행 판정 구간』'),
+  S('kkos', '여기부터는 걷는 속도가 좌표입니다. 빠르면 다음 기억이 열리지 않습니다.'),
+  S('newbie', '뛰면 어떻게 되는데요?'),
+  S('kkos', '처음으로 되돌아갑니다. …해보시면 압니다.'),
+  S('kkos', '임계는 227. 멈춰도 안 됩니다. 걸으십시오.'),
+], null, true);
+
+// ---- 정적 도달성 레지스트리 (design.md §7) ----
+N('sys.index', [{
+  choice: [
+    ['mem0.b1', 'mem0.b1'], ['mem0.b2', 'mem0.b2'], ['mem0.b3', 'mem0.b3'],
+    ['mem0.b4', 'mem0.b4'], ['mem0.b5', 'mem0.b5'], ['mem0.rehearsal', 'mem0.rehearsal'],
+    ['mem0.memento.refuse', 'mem0.memento.refuse'], ['mem0.memento.open', 'mem0.memento.open'],
+    ['mem0.door.refuse', 'mem0.door.refuse'], ['mem0.dive', 'mem0.dive'],
+    ['mem0.arrive', 'mem0.arrive'],
+    ['mem4.b1', 'mem4.b1'], ['mem4.b2', 'mem4.b2'], ['mem4.b3', 'mem4.b3'],
+    ['mem4.b4', 'mem4.b4'], ['mem4.b5', 'mem4.b5'], ['mem4.flashback', 'mem4.flashback'],
+    ['mem4.memento.refuse', 'mem4.memento.refuse'], ['mem4.memento.open', 'mem4.memento.open'],
+    ['mem4.door.refuse', 'mem4.door.refuse'], ['mem4.dive', 'mem4.dive'],
+    ['mem12.b1', 'mem12.b1'], ['mem12.b2', 'mem12.b2'], ['mem12.b3', 'mem12.b3'],
+    ['mem12.b4', 'mem12.b4'], ['mem12.b5', 'mem12.b5'], ['mem12.lockeddoor', 'mem12.lockeddoor'],
+    ['mem12.memento.refuse', 'mem12.memento.refuse'], ['mem12.memento.open', 'mem12.memento.open'],
+    ['mem12.door.refuse', 'mem12.door.refuse'], ['mem12.dive', 'mem12.dive'],
+    ['mem7h.vend', 'mem7h.vend'], ['mem7h.flip', 'mem7h.flip'],
+    ['corridor.intro', 'corridor.intro'],
+  ]
+}], null, true);
+
+// ================================================================
+// SCENES — logic fields (w,h,era,objects,corridor,diveNode,onEnter)
+// unchanged from v1. Visual-only fields: floor, deco, lights, sky.
+// ================================================================
+var SCENES = {
+  frameA: { w: 30, h: 17, era: -1, tint: PAL.paper, onEnter: 'frameA.start', objects: [], doc: 'A' },
+  mem0: {
+    w: 40, h: 17, era: 0, tint: PAL.teal, floor: 'lino',
+    objects: [
+      { id: 'b1_mem0', kind: 'bank', x: 8,  y: 5,  node: 'mem0.b1', spr: 'chute' },
+      { id: 'b2_mem0', kind: 'bank', x: 14, y: 4,  node: 'mem0.b2', spr: 'crt' },
+      { id: 'b3_mem0', kind: 'bank', x: 21, y: 8,  node: 'mem0.b3', spr: 'stampwall' },
+      { id: 'b4_mem0', kind: 'bank', x: 28, y: 5,  node: 'mem0.b4', spr: 'vend' },
+      { id: 'b5_mem0', kind: 'bank', x: 33, y: 10, node: 'mem0.b5', spr: 'tray' },
+      { id: 'npc_archon0', kind: 'npc', x: 11, y: 9, node: 'mem0.rehearsal', spr: 'penguin' },
+      { id: 'memento_mem0', kind: 'memento', mem: 'mem0', x: 18, y: 12,
+        refuse: 'mem0.memento.refuse', open: 'mem0.memento.open', spr: 'folder' },
+      { id: 'door_mem0', kind: 'door', mem: 'mem0', x: 38, y: 8,
+        corridor: 'corridor0', refuse: 'mem0.door.refuse', spr: 'dive' },
+    ],
+    deco: [
+      ['desk', 7, 6], ['desk', 13, 5], ['desk', 27, 6], ['cab', 3, 3], ['cab', 4, 3],
+      ['cab', 24, 3], ['cab', 25, 3], ['plant', 36, 4], ['papers', 17, 13], ['papers', 22, 6],
+      ['win', 6, 1], ['win', 12, 1], ['win', 18, 1], ['win', 24, 1], ['win', 30, 1],
+      ['fluo', 10, 0], ['fluo', 20, 0], ['fluo', 30, 0],
+    ],
+    lights: [
+      { x: 10, y: 2, r: 88, c: 'rgba(201,201,122,0.36)' },
+      { x: 20, y: 2, r: 88, c: 'rgba(201,201,122,0.30)' },
+      { x: 30, y: 2, r: 88, c: 'rgba(201,201,122,0.32)' },
+      { x: 14, y: 4, r: 34, c: 'rgba(127,212,168,0.5)' },
+      { x: 18, y: 12, r: 30, c: 'rgba(229,197,88,0.5)' },
+    ],
+    ambient: 0.62, sky: true
+  },
+  corridor0: { w: 60, h: 9, era: 0, tint: PAL.night, corridor: true, diveNode: 'mem0.dive', objects: [], ambient: 0.7, onEnter: 'corridor.intro' },
+  mem4: {
+    w: 40, h: 17, era: 4, tint: PAL.olive, floor: 'wood',
+    objects: [
+      { id: 'b1_mem4', kind: 'bank', x: 7,  y: 6,  node: 'mem4.b1', spr: 'paper1' },
+      { id: 'b2_mem4', kind: 'bank', x: 13, y: 4,  node: 'mem4.b2', spr: 'mic' },
+      { id: 'b3_mem4', kind: 'bank', x: 20, y: 9,  node: 'mem4.b3', spr: 'paper1' },
+      { id: 'b4_mem4', kind: 'bank', x: 27, y: 4,  node: 'mem4.b4', spr: 'stampbrk' },
+      { id: 'b5_mem4', kind: 'bank', x: 32, y: 11, node: 'mem4.b5', spr: 'report' },
+      { id: 'npc_court', kind: 'npc', x: 16, y: 12, node: 'mem4.flashback', spr: 'gavel' },
+      { id: 'memento_mem4', kind: 'memento', mem: 'mem4', x: 22, y: 13,
+        refuse: 'mem4.memento.refuse', open: 'mem4.memento.open', spr: 'plaque' },
+      { id: 'door_mem4', kind: 'door', mem: 'mem4', x: 38, y: 8,
+        corridor: 'corridor4', refuse: 'mem4.door.refuse', spr: 'dive' },
+    ],
+    deco: [
+      ['bench', 6, 8], ['bench', 6, 10], ['bench', 12, 8], ['bench', 12, 10],
+      ['bench', 24, 8], ['bench', 24, 10], ['podium', 16, 5], ['cab', 34, 3],
+      ['fluo', 9, 0], ['fluo', 19, 0], ['fluo', 29, 0], ['papers', 31, 12],
+    ],
+    lights: [
+      { x: 9, y: 2, r: 80, c: 'rgba(201,201,122,0.30)' },
+      { x: 19, y: 2, r: 96, c: 'rgba(217,160,91,0.34)' },
+      { x: 29, y: 2, r: 80, c: 'rgba(201,201,122,0.30)' },
+      { x: 22, y: 13, r: 30, c: 'rgba(229,197,88,0.5)' },
+    ],
+    ambient: 0.58
+  },
+  corridor4: { w: 60, h: 9, era: 4, tint: PAL.night, corridor: true, diveNode: 'mem4.dive', objects: [], ambient: 0.7 },
+  mem12: {
+    w: 40, h: 17, era: 12, tint: PAL.amber, floor: 'terra',
+    objects: [
+      { id: 'b1_mem12', kind: 'bank', x: 6,  y: 5,  node: 'mem12.b1', spr: 'circuit' },
+      { id: 'b2_mem12', kind: 'bank', x: 12, y: 9,  node: 'mem12.b2', spr: 'memo' },
+      { id: 'b3_mem12', kind: 'bank', x: 19, y: 4,  node: 'mem12.b3', spr: 'trees' },
+      { id: 'b4_mem12', kind: 'bank', x: 26, y: 10, node: 'mem12.b4', spr: 'folders3' },
+      { id: 'b5_mem12', kind: 'bank', x: 31, y: 5,  node: 'mem12.b5', spr: 'sketch' },
+      { id: 'prop_lock', kind: 'npc', x: 3, y: 8, node: 'mem12.lockeddoor', spr: 'lockdoor' },
+      { id: 'memento_mem12', kind: 'memento', mem: 'mem12', x: 21, y: 13,
+        refuse: 'mem12.memento.refuse', open: 'mem12.memento.open', spr: 'gauge' },
+      { id: 'door_mem12', kind: 'door', mem: 'mem12', x: 38, y: 8,
+        corridor: 'corridor12', refuse: 'mem12.door.refuse', spr: 'dive' },
+    ],
+    deco: [
+      ['lab', 8, 6], ['lab', 15, 6], ['lab', 24, 6], ['cab', 34, 3], ['cab', 35, 3],
+      ['plant', 30, 12], ['papers', 10, 12], ['fluo', 8, 0], ['fluo', 18, 0], ['fluo', 28, 0],
+      ['win', 14, 1], ['win', 22, 1],
+    ],
+    lights: [
+      { x: 8, y: 2, r: 90, c: 'rgba(217,160,91,0.42)' },
+      { x: 18, y: 2, r: 90, c: 'rgba(217,160,91,0.40)' },
+      { x: 28, y: 2, r: 90, c: 'rgba(229,197,88,0.36)' },
+      { x: 21, y: 13, r: 32, c: 'rgba(229,197,88,0.55)' },
+    ],
+    ambient: 0.46, sky: true
+  },
+  corridor12: { w: 60, h: 9, era: 12, tint: PAL.night, corridor: true, diveNode: 'mem12.dive', objects: [], ambient: 0.7 },
+  mem7h: {
+    w: 34, h: 8, era: 7.5, tint: PAL.gold, low: true, floor: 'dust',
+    objects: [
+      { id: 'vend_7h', kind: 'npc', x: 28, y: 4, node: 'mem7h.vend', spr: 'vend' },
+      { id: 'paper_pile', kind: 'npc', x: 16, y: 4, node: 'mem7h.flip', spr: 'pile' },
+    ],
+    deco: [
+      ['dossier', 4, 2], ['dossier', 7, 2], ['dossier', 10, 2], ['dossier', 13, 2],
+      ['dossier', 19, 2], ['dossier', 22, 2], ['dossier', 25, 2],
+      ['beam', 6, 0], ['beam', 12, 0], ['beam', 18, 0], ['beam', 24, 0], ['beam', 30, 0],
+    ],
+    lights: [
+      { x: 16, y: 4, r: 70, c: 'rgba(229,197,88,0.5)' },
+      { x: 6, y: 3, r: 40, c: 'rgba(217,160,91,0.3)' },
+      { x: 26, y: 3, r: 40, c: 'rgba(217,160,91,0.3)' },
+    ],
+    ambient: 0.66,
+    onEnter: 'mem7h.arrive'
+  },
+  frameB: { w: 30, h: 17, era: -1, tint: PAL.shadow, objects: [], doc: 'B' },
+};
+
+// ================================================================
+// GAME STATE  (logic — unchanged from v1)
+// ================================================================
+var G = {
+  version: 'ep1',
+  seed: 1, rng: mulberry32(1), rngDraws: 0,
+  frame: 0, scene: 'frameA', era: -1,
+  pos: { x: 15 * TILE, y: 9 * TILE },
+  facing: 'D',
+  flags: {},
+  banks: { mem0: 0, mem4: 0, mem12: 0 },
+  mementos: [],
+  bankGiven: {},
+  puzzleDone: {},
+  inputQ: [],
+  dialogue: null,
+  ffMode: false,
+  puzzle: null,
+  corridor: null,
+  vHist: [],
+  script: SCRIPT,
+};
+
+function rnd() { G.rngDraws++; return G.rng(); }
+function setSeed(n) { G.seed = n >>> 0; G.rng = mulberry32(G.seed); G.rngDraws = 0; }
+function sceneDef() { return SCENES[G.scene]; }
+
+function enterScene(id, x, y) {
+  var sc = SCENES[id];
+  if (!sc) return;
+  G.scene = id;
+  G.era = sc.era;
+  if (x !== undefined) { G.pos.x = x * TILE; G.pos.y = y * TILE; }
+  else { G.pos.x = 2 * TILE; G.pos.y = Math.floor(sc.h / 2) * TILE; }
+  G.vHist = [];
+  if (sc.corridor) resetCorridor();
+  if (sc.onEnter && !G.flags['entered_' + id]) {
+    G.flags['entered_' + id] = true;
+    startDialogue(sc.onEnter);
+  }
+}
+
+// ---------------- dialogue ----------------
+function startDialogue(nodeId) {
+  if (!SCRIPT.nodes[nodeId]) return;
+  G.dialogue = { nodeId: nodeId, stepIdx: 0, hold: 0 };
+}
+
+function stepDialogue() {
+  var d = G.dialogue;
+  if (!d) return;
+  var node = SCRIPT.nodes[d.nodeId];
+  if (!node) { G.dialogue = null; return; }
+  var guard = 0;
+  while (d && guard++ < 200) {
+    node = SCRIPT.nodes[d.nodeId];
+    if (d.stepIdx >= node.steps.length) {
+      if (node.next && !node.end) { d.nodeId = node.next; d.stepIdx = 0; continue; }
+      if (node.next && node.end) { G.dialogue = null; return; }
+      G.dialogue = null; return;
+    }
+    var op = node.steps[d.stepIdx];
+    if (op.say !== undefined) {
+      d.stepIdx++;
+      // say lines WAIT for input; hold only times the typewriter reveal
+      if (!G.ffMode) { d.hold = 24; d.waiting = true; return; }
+      continue;
+    }
+    if (op.pause !== undefined) {
+      d.stepIdx++;
+      // pauses auto-continue when the hold expires
+      if (!G.ffMode) { d.hold = op.pause; d.waiting = false; return; }
+      continue;
+    }
+    if (op.flag !== undefined) { G.flags[op.flag[0]] = op.flag[1]; d.stepIdx++; continue; }
+    if (op.flash !== undefined) { G.flags._flash = G.frame; d.stepIdx++; continue; }
+    if (op.scene !== undefined) { d.stepIdx++; enterScene(op.scene); continue; }
+    if (op.choice !== undefined) {
+      var q = G.inputQ[0];
+      if (q && q.choose !== undefined) {          // debug queue path
+        G.inputQ.shift();
+        var pick = op.choice[q.choose] ? q.choose : 0;
+        d.nodeId = op.choice[pick][1]; d.stepIdx = 0; continue;
+      }
+      if (G.ffMode) {                             // bot/fast-forward auto-picks 0
+        d.nodeId = op.choice[0][1]; d.stepIdx = 0; continue;
+      }
+      d.choosing = { sel: 0, opts: op.choice };   // humans: ArrowUp/Down + E
+      d.waiting = true;
+      return;
+    }
+    d.stepIdx++;
+  }
+}
+
+// ---------------- interaction ----------------
+function findObject(id) {
+  var sc = sceneDef();
+  for (var i = 0; i < sc.objects.length; i++) if (sc.objects[i].id === id) return sc.objects[i];
+  return null;
+}
+
+function interactObject(obj) {
+  if (!obj) return;
+  if (obj.kind === 'bank') {
+    if (!G.bankGiven[obj.id]) {
+      G.bankGiven[obj.id] = true;
+      var mem = obj.id.split('_')[1];
+      if (G.banks[mem] !== undefined && G.banks[mem] < 5) G.banks[mem]++;
+    }
+    startDialogue(obj.node);
+    return;
+  }
+  if (obj.kind === 'memento') {
+    if (G.banks[obj.mem] < 5) { startDialogue(obj.refuse); return; }
+    if (!G.puzzleDone[obj.mem]) {
+      if (!G.puzzle || G.puzzle.mem !== obj.mem) openPuzzle(obj.mem);
+      return;
+    }
+    if (G.mementos.indexOf(obj.mem) < 0) {
+      G.mementos.push(obj.mem);
+      startDialogue(obj.open);
+    }
+    return;
+  }
+  if (obj.kind === 'door') {
+    if (G.mementos.indexOf(obj.mem) < 0) { startDialogue(obj.refuse); return; }
+    enterScene(obj.corridor, 2, 4);
+    return;
+  }
+  startDialogue(obj.node);
+}
+
+function nearestObject() {
+  var sc = sceneDef(), best = null, bd = 1e9;
+  for (var i = 0; i < sc.objects.length; i++) {
+    var o = sc.objects[i];
+    var dx = o.x * TILE - G.pos.x, dy = o.y * TILE - G.pos.y;
+    var d = Math.abs(dx) + Math.abs(dy);
+    if (d < bd) { bd = d; best = o; }
+  }
+  return bd <= TILE * 1.6 ? best : null;
+}
+
+// ---------------- stamp puzzle (lights-out 5x3) ----------------
+function openPuzzle(mem) {
+  var grid = [];
+  for (var i = 0; i < 15; i++) grid.push(false);
+  var presses = 4 + Math.floor(rnd() * 5);
+  for (var p = 0; p < presses; p++) pressPuzzle(grid, Math.floor(rnd() * 15));
+  if (puzzleSolved(grid)) pressPuzzle(grid, 7);   // never open in an already-solved state
+  G.puzzle = { mem: mem, grid: grid, active: true };
+}
+function pressPuzzle(grid, i) {
+  var x = i % 5, y = Math.floor(i / 5);
+  var flip = function (xx, yy) {
+    if (xx < 0 || xx > 4 || yy < 0 || yy > 2) return;
+    var k = yy * 5 + xx; grid[k] = !grid[k];
+  };
+  flip(x, y); flip(x - 1, y); flip(x + 1, y); flip(x, y - 1); flip(x, y + 1);
+}
+function puzzleSolved(grid) {
+  for (var i = 0; i < 15; i++) if (grid[i]) return false;
+  return true;
+}
+function solvePuzzleNow() {
+  var pz = G.puzzle;
+  if (!pz) return false;
+  for (var mask = 0; mask < 32; mask++) {
+    var g = pz.grid.slice();
+    for (var x = 0; x < 5; x++) if (mask & (1 << x)) pressPuzzle(g, x);
+    for (var y = 1; y < 3; y++)
+      for (var x2 = 0; x2 < 5; x2++)
+        if (g[(y - 1) * 5 + x2]) pressPuzzle(g, y * 5 + x2);
+    if (puzzleSolved(g)) {
+      pz.grid = g; pz.active = false;
+      G.puzzleDone[pz.mem] = true;
+      var memObj = null, sc = sceneDef();
+      for (var i = 0; i < sc.objects.length; i++)
+        if (sc.objects[i].kind === 'memento' && sc.objects[i].mem === pz.mem) memObj = sc.objects[i];
+      G.puzzle = null;
+      if (memObj) interactObject(memObj);
+      return true;
+    }
+  }
+  return false;
+}
+
+// ---------------- crowbar corridor ----------------
+function resetCorridor() {
+  G.corridor = { dwell: 0, samples: [], passed: false, gag: 0, dwellEverOk: false };
+  G.flags.corridor_pass = false;
+}
+function corridorEndX() { return (sceneDef().w - 3) * TILE; }
+function updateCorridor(dxAbs) {
+  var c = G.corridor;
+  if (!c || c.passed) return;
+  var v = dxAbs;
+  G.vHist.push(v); if (G.vHist.length > 5) G.vHist.shift();
+  var vAvg = 0;
+  for (var i = 0; i < G.vHist.length; i++) vAvg += G.vHist[i];
+  vAvg /= G.vHist.length;
+  var moving = vAvg > 0.02;
+  var okSpeed = vAvg <= V_MAX_PXF && moving;
+  c.samples.push(moving ? 0 : 1);
+  if (c.samples.length > DWELL_FRAMES) c.samples.shift();
+  if (okSpeed) c.dwell++; else c.dwell = 0;
+  var zeroRatio = 0;
+  for (var j = 0; j < c.samples.length; j++) zeroRatio += c.samples[j];
+  zeroRatio /= (c.samples.length || 1);
+  var dwellOk = c.dwell >= DWELL_FRAMES && zeroRatio < ZERO_RATIO_MAX;
+  if (dwellOk) c.dwellEverOk = true;   // per-attempt, cleared by resetCorridor/throwback
+  if (G.pos.x >= corridorEndX()) {
+    if (c.dwellEverOk) {
+      c.passed = true;
+      G.flags.corridor_pass = true;
+      G.flags[G.scene + '_pass'] = true;
+      startDialogue(sceneDef().diveNode);
+    } else {
+      c.gag = Math.min(c.gag + 1, 3);   // gag lines escalate and stay
+      G.pos.x = 2 * TILE;
+      c.dwellEverOk = false;
+      c.dwell = 0; c.samples = []; G.vHist = [];
+    }
+  }
+}
+
+// ---------------- update (fixed step) ----------------
+function update() {
+  G.frame++;
+  var sc = sceneDef();
+  var dx = 0, dy = 0;
+
+  if (G.dialogue) {
+    var d = G.dialogue;
+    if (d.choosing) {
+      var qc = G.inputQ[0];
+      if (qc && qc.choose !== undefined) { G.inputQ.shift(); chooseOption(qc.choose); }
+    }
+    else if (d.hold > 0) { d.hold--; }
+    else if (!d.waiting) stepDialogue();   // only pauses/op-chains auto-continue
+  } else {
+    var op = G.inputQ[0];
+    if (op) {
+      if (op.move !== undefined) {
+        var sp = op.run ? RUN_PXF : WALK_PXF;
+        if (op.move === 'L') dx = -sp;
+        if (op.move === 'R') dx = sp;
+        if (op.move === 'U') dy = -sp;
+        if (op.move === 'D') dy = sp;
+        G.facing = op.move;
+        op.frames--;
+        if (op.frames <= 0) G.inputQ.shift();
+      } else if (op.interact !== undefined) {
+        G.inputQ.shift();
+        var o = nearestObject();
+        if (o) interactObject(o);
+      } else if (op.choose !== undefined) {
+        G.inputQ.shift();
+      } else G.inputQ.shift();
+    } else if (live.keys) {
+      var sp2 = live.run ? RUN_PXF : WALK_PXF;   // Shift = 달리기 (복도에서 벌 받는 그 속도)
+      if (live.left)  { dx = -sp2; G.facing = 'L'; }
+      if (live.right) { dx = sp2;  G.facing = 'R'; }
+      if (live.up)    { dy = -sp2; G.facing = 'U'; }
+      if (live.down)  { dy = sp2;  G.facing = 'D'; }
+    }
+  }
+
+  var nx = G.pos.x + dx, ny = G.pos.y + dy;
+  var maxX = (sc.w - 2) * TILE, maxY = (sc.h - 2) * TILE;
+  if (nx < TILE) nx = TILE; if (nx > maxX) nx = maxX;
+  if (ny < TILE) ny = TILE; if (ny > maxY) ny = maxY;
+  var realDx = Math.abs(nx - G.pos.x);
+  var moved = Math.abs(nx - G.pos.x) + Math.abs(ny - G.pos.y);
+  G.pos.x = nx; G.pos.y = ny;
+  G._walkPhase = moved > 0.01 ? (G._walkPhase || 0) + 1 : 0;   // render-only cadence
+
+  if (sc.corridor) updateCorridor(realDx);
+}
+
+// ---------------- save / load ----------------
+function saveSlot(n) {
+  var data = {
+    v: 1, seed: G.seed, rngDraws: G.rngDraws, scene: G.scene,
+    x: G.pos.x, y: G.pos.y, flags: G.flags, banks: G.banks,
+    mementos: G.mementos, bankGiven: G.bankGiven, puzzleDone: G.puzzleDone, era: G.era,
+  };
+  try { localStorage.setItem('tts_ep1_s' + n, JSON.stringify(data)); } catch (e) {}
+  G._lastSave = JSON.stringify(data);
+  return data;
+}
+function loadSlot(n) {
+  var raw = null;
+  try { raw = localStorage.getItem('tts_ep1_s' + n); } catch (e) {}
+  if (!raw) raw = G._lastSave;
+  if (!raw) return false;
+  var d = JSON.parse(raw);
+  setSeed(d.seed);
+  for (var i = 0; i < d.rngDraws; i++) G.rng();
+  G.rngDraws = d.rngDraws;
+  G.scene = d.scene; G.era = d.era;
+  G.pos.x = d.x; G.pos.y = d.y;
+  G.flags = d.flags; G.banks = d.banks; G.mementos = d.mementos;
+  G.bankGiven = d.bankGiven; G.puzzleDone = d.puzzleDone;
+  G.dialogue = null; G.inputQ = []; G.puzzle = null;
+  if (SCENES[G.scene].corridor) resetCorridor();
+  return true;
+}
+
+// ---------------- state hash ----------------
+function stateHash() {
+  var fl = [];
+  for (var k in G.flags) if (k[0] !== '_') fl.push(k + '=' + G.flags[k]);
+  fl.sort();
+  var s = [G.scene, G.era, Math.round(G.pos.x * 100) / 100, Math.round(G.pos.y * 100) / 100,
+           G.banks.mem0, G.banks.mem4, G.banks.mem12,
+           G.mementos.slice().sort().join(','), fl.join('|')].join('#');
+  return fnv(s);
+}
+
+// ---------------- autoplay bot ----------------
+function botTick() {
+  if (G.dialogue) { stepDialogue(); return; }
+  if (G.puzzle) { solvePuzzleNow(); return; }
+  var sc = sceneDef();
+
+  if (sc.corridor) {
+    if (!G.flags.corridor_pass) G.inputQ = [{ move: 'R', frames: 4 }];
+    return;
+  }
+  if (G.scene === 'frameA') return;
+  if (G.scene === 'frameB') return;
+
+  var target = null;
+  if (G.scene === 'mem7h') {
+    target = findObject('paper_pile');
+  } else {
+    var mem = G.scene;
+    for (var i = 0; i < sc.objects.length; i++) {
+      var o = sc.objects[i];
+      if (o.kind === 'bank' && !G.bankGiven[o.id]) { target = o; break; }
+    }
+    if (!target && G.banks[mem] >= 5 && G.mementos.indexOf(mem) < 0) {
+      for (var j = 0; j < sc.objects.length; j++)
+        if (sc.objects[j].kind === 'memento') { target = sc.objects[j]; break; }
+    }
+    if (!target && G.mementos.indexOf(mem) >= 0) {
+      for (var k2 = 0; k2 < sc.objects.length; k2++)
+        if (sc.objects[k2].kind === 'door') { target = sc.objects[k2]; break; }
+    }
+  }
+  if (!target) return;
+  var tx = target.x * TILE, ty = target.y * TILE;
+  var dx = tx - G.pos.x, dy = ty - G.pos.y;
+  if (Math.abs(dx) + Math.abs(dy) <= TILE * 1.4) {
+    interactObject(target);
+    return;
+  }
+  if (Math.abs(dx) > 2) G.inputQ = [{ move: dx > 0 ? 'R' : 'L', frames: 2 }];
+  else G.inputQ = [{ move: dy > 0 ? 'D' : 'U', frames: 2 }];
+}
+
+function autoplay(maxFrames) {
+  var start = G.frame;
+  G.ffMode = true;
+  while (G.frame - start < maxFrames) {
+    if (G.flags.ep1_cliffhanger) return true;
+    botTick();
+    update();
+  }
+  return !!G.flags.ep1_cliffhanger;
+}
+
+// ---------------- live input (human play) ----------------
+var live = { keys: true, left: false, right: false, up: false, down: false, run: false };
+function chooseOption(i) {
+  var d = G.dialogue;
+  if (!d || !d.choosing) return;
+  var opts = d.choosing.opts;
+  var pick = opts[i] ? i : 0;
+  d.choosing = null; d.waiting = false;
+  d.nodeId = opts[pick][1]; d.stepIdx = 0;
+  stepDialogue();
+}
+function advanceDialogue() {   // the single user-input path into dialogue
+  var d = G.dialogue;
+  if (!d) return;
+  if (d.choosing) { chooseOption(d.choosing.sel); return; }
+  if (d.hold > 0) { d.hold = 0; return; }  // finish typewriter / skip pause
+  d.waiting = false;
+  stepDialogue();
+}
+addEventListener('keydown', function (e) {
+  if (G.dialogue && G.dialogue.choosing) {
+    var chs = G.dialogue.choosing, cn = chs.opts.length;
+    if (e.key === 'ArrowUp' || e.key === 'w') chs.sel = (chs.sel + cn - 1) % cn;
+    if (e.key === 'ArrowDown' || e.key === 's') chs.sel = (chs.sel + 1) % cn;
+  }
+  if (e.key === 'ArrowLeft' || e.key === 'a') live.left = true;
+  if (e.key === 'ArrowRight' || e.key === 'd') live.right = true;
+  if (e.key === 'ArrowUp' || e.key === 'w') live.up = true;
+  if (e.key === 'ArrowDown' || e.key === 's') live.down = true;
+  if (e.key === 'Shift') live.run = true;
+  if (e.key === 'e' || e.key === ' ' || e.key === 'Enter') {
+    e.preventDefault();
+    if (e.repeat) return;                  // held key must not machine-gun lines
+    if (G.puzzle && G.puzzle.active) return;
+    if (G.dialogue) advanceDialogue();
+    else { var o = nearestObject(); if (o) interactObject(o); }
+  }
+});
+addEventListener('keyup', function (e) {
+  if (e.key === 'ArrowLeft' || e.key === 'a') live.left = false;
+  if (e.key === 'ArrowRight' || e.key === 'd') live.right = false;
+  if (e.key === 'ArrowUp' || e.key === 'w') live.up = false;
+  if (e.key === 'ArrowDown' || e.key === 's') live.down = false;
+  if (e.key === 'Shift') live.run = false;
+});
+// mouse: click a puzzle cell / advance dialogue
+var cv = document.getElementById('view');
+cv.addEventListener('mousedown', function (e) {
+  var r = cv.getBoundingClientRect();
+  var mx = (e.clientX - r.left) * (VW / r.width);
+  var my = (e.clientY - r.top) * (VH / r.height);
+  if (G.puzzle && G.puzzle.active) {
+    for (var pi = 0; pi < 15; pi++) {
+      var px = 110 + (pi % 5) * 54, py = 62 + Math.floor(pi / 5) * 44;
+      if (mx >= px && mx <= px + 46 && my >= py && my <= py + 36) {
+        pressPuzzle(G.puzzle.grid, pi);
+        if (puzzleSolved(G.puzzle.grid)) {
+          G.puzzle.active = false;
+          G.puzzleDone[G.puzzle.mem] = true;
+          var sc2 = sceneDef(), memObj = null;
+          for (var q = 0; q < sc2.objects.length; q++)
+            if (sc2.objects[q].kind === 'memento' && sc2.objects[q].mem === G.puzzle.mem) memObj = sc2.objects[q];
+          G.puzzle = null;
+          if (memObj) interactObject(memObj);
+        }
+        return;
+      }
+    }
+    return;
+  }
+  if (G.dialogue) advanceDialogue();
+});
+
+// ================================================================
+// AUDIO — 〈각주를 위하여〉 (For Footnotes). Web Audio, zero files.
+// Arrangement = f(era footnote count): 0=musicbox solo, 4=+bass,
+// 12=+arpeggio, 7.5F=full 47-voice era. Render-side only — never
+// touches game logic. Starts on first user gesture (autoplay policy).
+// ================================================================
+var AU = { ctx: null, master: null, muted: false, beat: 0, nextT: 0,
+           lastEra: 'x', lastFlash: -1, lastSayKey: '', lastStepBucket: 0,
+           hum: null };
+var BPM = 72, BEAT = 60 / BPM;      // quarter = 0.833s
+var NOTE = { A2:110.0, E3:164.81, A3:220.0, C4:261.63, D4:293.66, E4:329.63,
+             F4:349.23, G4:392.0, A4:440.0, B4:493.88, C5:523.25, D5:587.33, E5:659.26 };
+// two 4-bar phrases, quarter-note lead (0 = rest)
+var LEAD = ['A4','C5','B4','E5', 'C5','B4','A4',0, 'F4','A4','G4','C5', 'A4','G4','E4',0];
+var ARP  = ['A3','C4','E4','C4'];   // eighths, era>=12
+var COUNTER = ['E4','D4','C4','B4','C4','D4','E4','G4'];  // half-notes, 7.5F
+
+function auInit() {
+  if (AU.ctx) return;
+  try {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    AU.ctx = new AC();
+    AU.master = AU.ctx.createGain();
+    AU.master.gain.value = 0.32;
+    AU.master.connect(AU.ctx.destination);
+    AU.nextT = AU.ctx.currentTime + 0.1;
+  } catch (e) { AU.ctx = null; }
+}
+function auNow() { return AU.ctx ? AU.ctx.currentTime : 0; }
+
+function voice(freq, t, dur, type, gainV, filterHz, detune) {
+  if (!AU.ctx || AU.muted || !freq) return;
+  var o = AU.ctx.createOscillator(), g = AU.ctx.createGain();
+  o.type = type; o.frequency.value = freq;
+  if (detune) o.detune.value = detune;
+  var dst = AU.master;
+  if (filterHz) {
+    var f = AU.ctx.createBiquadFilter();
+    f.type = 'lowpass'; f.frequency.value = filterHz;
+    o.connect(g); g.connect(f); f.connect(dst);
+  } else { o.connect(g); g.connect(dst); }
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(gainV, t + 0.015);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.start(t); o.stop(t + dur + 0.05);
+}
+function musicbox(n, t, g) { if (n) { voice(NOTE[n], t, 1.4, 'sine', g, 0, 0); voice(NOTE[n] * 3, t, 0.5, 'sine', g * 0.18, 0, 4); } }
+function piano(n, t, g) { if (n) { voice(NOTE[n], t, 1.1, 'triangle', g, 1800, 0); voice(NOTE[n], t, 1.1, 'triangle', g * 0.5, 1800, 7); } }
+function bassN(n, t, g) { if (n) voice(NOTE[n], t, 1.6, 'triangle', g, 500, 0); }
+function cello(n, t, g) { if (n) { voice(NOTE[n], t, BEAT * 2.1, 'sawtooth', g, 620, 0); } }
+
+function noiseBurst(t, dur, gainV, hz) {
+  if (!AU.ctx || AU.muted) return;
+  var len = Math.max(1, Math.floor(AU.ctx.sampleRate * dur));
+  var buf = AU.ctx.createBuffer(1, len, AU.ctx.sampleRate);
+  var d = buf.getChannelData(0);
+  for (var i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+  var src = AU.ctx.createBufferSource(); src.buffer = buf;
+  var f = AU.ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = hz; f.Q.value = 1.2;
+  var g = AU.ctx.createGain(); g.gain.value = gainV;
+  src.connect(f); f.connect(g); g.connect(AU.master);
+  src.start(t);
+}
+function sfxStep() { noiseBurst(auNow(), 0.05, 0.10, sceneDef().low ? 500 : 900); }
+function sfxBlip() { voice(660, auNow(), 0.07, 'square', 0.05, 1400, 0); }
+function sfxBell() { voice(880, auNow(), 0.7, 'sine', 0.14, 0, 0); voice(1320, auNow(), 0.5, 'sine', 0.07, 0, 3); }
+function sfxStamp() {
+  if (!AU.ctx || AU.muted) return;
+  var t = auNow();
+  var o = AU.ctx.createOscillator(), g = AU.ctx.createGain();
+  o.type = 'sine'; o.frequency.setValueAtTime(140, t);
+  o.frequency.exponentialRampToValueAtTime(40, t + 0.18);
+  g.gain.setValueAtTime(0.5, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+  o.connect(g); g.connect(AU.master); o.start(t); o.stop(t + 0.25);
+  noiseBurst(t, 0.08, 0.2, 700);
+}
+function sfxDive() {
+  if (!AU.ctx || AU.muted) return;
+  var t = auNow();
+  noiseBurst(t, 0.9, 0.28, 300);
+  voice(220, t, 0.9, 'sawtooth', 0.10, 900, 0);
+  voice(110, t + 0.1, 0.8, 'sawtooth', 0.08, 400, 0);
+}
+
+function humSet(on, warm) {
+  if (!AU.ctx) return;
+  if (on && !AU.hum) {
+    var o1 = AU.ctx.createOscillator(), o2 = AU.ctx.createOscillator(), g = AU.ctx.createGain();
+    o1.type = 'sine'; o1.frequency.value = warm ? 90 : 100;
+    o2.type = 'sine'; o2.frequency.value = warm ? 135 : 120;
+    g.gain.value = 0.018;
+    o1.connect(g); o2.connect(g); g.connect(AU.master);
+    o1.start(); o2.start();
+    AU.hum = { o1: o1, o2: o2, g: g };
+  }
+  if (!on && AU.hum) {
+    try { AU.hum.o1.stop(); AU.hum.o2.stop(); } catch (e) {}
+    AU.hum = null;
+  }
+}
+
+function scheduleBeat(idx, t) {
+  var era = G.era;
+  var q = idx % 16;                       // position in the 16-quarter loop
+  var lead = LEAD[q];
+  if (era < 0) {                          // reality frame: faint, sparse
+    if (q % 4 === 0) musicbox(lead || 'A4', t, 0.035);
+    return;
+  }
+  if (era === 7.5) {                      // full 47-voice arrangement
+    piano(lead, t, 0.16);
+    if (lead) musicbox(lead, t, 0.06);                          // doubled octave sparkle
+    bassN(q % 4 === 0 ? 'A2' : (q % 4 === 2 ? 'E3' : 0), t, 0.14);
+    for (var e8 = 0; e8 < 2; e8++)                              // arpeggio eighths
+      piano(ARP[(idx * 2 + e8) % 4], t + e8 * BEAT / 2, 0.05);
+    if (q % 2 === 0) cello(COUNTER[(q / 2) % 8], t, 0.05);      // counter line
+    if (lead) piano(lead === 'E5' ? 'D5' : 'B4', t + BEAT * 0.12, 0.03);  // grace
+    return;
+  }
+  // era 0 / 4 / 12 ladders
+  musicbox(lead, t, 0.11);
+  if (era >= 4) bassN(q % 4 === 0 ? 'A2' : (q % 4 === 2 ? 'E3' : 0), t, 0.10);
+  if (era >= 12)
+    for (var e2 = 0; e2 < 2; e2++)
+      piano(ARP[(idx * 2 + e2) % 4], t + e2 * BEAT / 2, 0.045);
+}
+
+function audioTick() {
+  if (!AU.ctx || AU.muted) return;
+  // scene-driven ambient
+  var sc = sceneDef();
+  humSet(sc.era >= 0 && !sc.corridor, sc.era === 7.5 || sc.era === 12);
+  // music scheduler (0.15s lookahead)
+  while (AU.nextT < AU.ctx.currentTime + 0.15) {
+    scheduleBeat(AU.beat, AU.nextT);
+    AU.beat++;
+    AU.nextT += BEAT;
+  }
+  // event SFX (edge-detected from render side; logic untouched)
+  if (G.flags._flash !== undefined && G.flags._flash !== AU.lastFlash) {
+    AU.lastFlash = G.flags._flash; sfxDive();
+  }
+  if (G.dialogue) {
+    var key = G.dialogue.nodeId + '#' + G.dialogue.stepIdx;
+    if (key !== AU.lastSayKey) { AU.lastSayKey = key; sfxBlip(); }
+  }
+  var bucket = Math.floor((G._walkPhase || 0) / 9);
+  if (bucket !== AU.lastStepBucket) { AU.lastStepBucket = bucket; if (bucket > 0) sfxStep(); }
+  // era change: soft bell + reset phrase so each memory re-enters the motif
+  if (G.era !== AU.lastEra) {
+    if (AU.lastEra !== 'x') sfxBell();
+    AU.lastEra = G.era;
+    AU.beat = 0;
+  }
+}
+
+addEventListener('keydown', function au1() { auInit(); if (AU.ctx) removeEventListener('keydown', au1); });
+addEventListener('mousedown', function au2() { auInit(); if (AU.ctx) removeEventListener('mousedown', au2); });
+addEventListener('keydown', function (e) {
+  if (e.key === 'm' || e.key === 'M') { AU.muted = !AU.muted; if (AU.muted) humSet(false); }
+});
+
+// ================================================================
+// ART — procedural atlas. artRng is SEPARATE from game RNG.
+// ================================================================
+var artRng = mulberry32(20260827);
+function mk(w, h) { var c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+function px(g, x, y, w, h, col) { g.fillStyle = col; g.fillRect(x, y, w, h); }
+
+var SPR = {};   // name -> canvas
+
+function buildCharacter(name, coat, trim, opts) {
+  // 4 dirs x 3 frames, 16x24 each -> canvas 48x96 (col=frame,row=dir DRLU)
+  opts = opts || {};
+  var c = mk(48, 96), g = c.getContext('2d');
+  var dirs = ['D', 'R', 'L', 'U'];
+  for (var di = 0; di < 4; di++) {
+    for (var f = 0; f < 3; f++) {
+      var ox = f * 16, oy = di * 24;
+      var bob = f === 1 ? 0 : 1;
+      // legs
+      var lo = f === 0 ? -2 : (f === 2 ? 2 : 0);
+      px(g, ox + 5 + (lo < 0 ? -1 : 0), oy + 19 + bob, 3, 4 - bob, PAL.ink);
+      px(g, ox + 9 + (lo > 0 ? 1 : 0), oy + 19 + bob, 3, 4 - bob, PAL.ink);
+      // coat/body
+      px(g, ox + 4, oy + 10 + bob, 9, 10, coat);
+      px(g, ox + 4, oy + 10 + bob, 9, 2, trim);
+      // arms
+      px(g, ox + 3, oy + 11 + bob + (f === 0 ? 1 : 0), 2, 6, coat);
+      px(g, ox + 12, oy + 11 + bob + (f === 2 ? 1 : 0), 2, 6, coat);
+      // head
+      px(g, ox + 5, oy + 3 + bob, 7, 7, PAL.skin);
+      // hair
+      px(g, ox + 5, oy + 3 + bob, 7, 2, opts.hair || PAL.ink);
+      if (dirs[di] === 'U') px(g, ox + 5, oy + 3 + bob, 7, 6, opts.hair || PAL.ink);
+      // eyes
+      if (dirs[di] === 'D') { px(g, ox + 6, oy + 6 + bob, 1, 1, PAL.ink); px(g, ox + 10, oy + 6 + bob, 1, 1, PAL.ink); }
+      if (dirs[di] === 'R') px(g, ox + 10, oy + 6 + bob, 1, 1, PAL.ink);
+      if (dirs[di] === 'L') px(g, ox + 6, oy + 6 + bob, 1, 1, PAL.ink);
+      // prop
+      if (opts.pad && dirs[di] !== 'U') px(g, ox + 12, oy + 13 + bob, 3, 4, PAL.paper);
+      if (opts.sandwich && dirs[di] === 'D' && f === 1) px(g, ox + 2, oy + 14, 3, 2, PAL.amber);
+    }
+  }
+  SPR[name] = c;
+}
+
+function buildPenguin() {
+  var c = mk(48, 96), g = c.getContext('2d');
+  for (var di = 0; di < 4; di++) {
+    for (var f = 0; f < 3; f++) {
+      var ox = f * 16, oy = di * 24;
+      var bob = f === 1 ? 0 : 1;
+      var waddle = f === 0 ? -1 : (f === 2 ? 1 : 0);
+      // feet
+      px(g, ox + 4 + waddle, oy + 20, 4, 2, PAL.amber);
+      px(g, ox + 9 - waddle, oy + 20, 4, 2, PAL.amber);
+      // body
+      px(g, ox + 3, oy + 7 + bob, 11, 13, PAL.ink);
+      // belly (not on back view)
+      if (di !== 3) px(g, ox + 5, oy + 10 + bob, 7, 9, PAL.paper);
+      // flippers
+      px(g, ox + 2, oy + 10 + bob + (f === 0 ? 1 : 0), 2, 6, PAL.ink);
+      px(g, ox + 13, oy + 10 + bob + (f === 2 ? 1 : 0), 2, 6, PAL.ink);
+      // head
+      px(g, ox + 4, oy + 2 + bob, 9, 7, PAL.ink);
+      if (di === 0) { // down: face
+        px(g, ox + 6, oy + 4 + bob, 2, 2, PAL.paper); px(g, ox + 10, oy + 4 + bob, 2, 2, PAL.paper);
+        px(g, ox + 7, oy + 5 + bob, 1, 1, PAL.ink);  px(g, ox + 10, oy + 5 + bob, 1, 1, PAL.ink);
+        px(g, ox + 8, oy + 6 + bob, 2, 2, PAL.amber);
+      }
+      if (di === 1) { px(g, ox + 10, oy + 4 + bob, 2, 2, PAL.paper); px(g, ox + 12, oy + 6 + bob, 2, 1, PAL.amber); }
+      if (di === 2) { px(g, ox + 5, oy + 4 + bob, 2, 2, PAL.paper); px(g, ox + 3, oy + 6 + bob, 2, 1, PAL.amber); }
+    }
+  }
+  SPR.penguin_sheet = c;
+}
+
+function buildProps() {
+  var g, c;
+  function def(name, w, h, draw) { c = mk(w, h); g = c.getContext('2d'); draw(g, w, h); SPR[name] = c; }
+
+  def('desk', 32, 20, function (g) {
+    px(g, 0, 6, 32, 10, PAL.olive); px(g, 0, 6, 32, 2, PAL.paper);
+    px(g, 2, 16, 3, 4, PAL.ink); px(g, 27, 16, 3, 4, PAL.ink);
+    px(g, 4, 0, 12, 8, PAL.ink); px(g, 5, 1, 10, 6, PAL.teal); px(g, 6, 2, 8, 1, PAL.crt);
+    px(g, 20, 3, 8, 4, PAL.paper);
+  });
+  def('lab', 32, 20, function (g) {
+    px(g, 0, 6, 32, 10, PAL.steel); px(g, 0, 6, 32, 2, PAL.paper);
+    px(g, 2, 16, 3, 4, PAL.ink); px(g, 27, 16, 3, 4, PAL.ink);
+    px(g, 5, 1, 8, 6, PAL.amber); px(g, 18, 2, 10, 5, PAL.paper); px(g, 19, 3, 8, 1, PAL.rust);
+  });
+  def('cab', 16, 26, function (g) {
+    px(g, 1, 0, 14, 26, PAL.steel); px(g, 1, 0, 14, 2, PAL.paper);
+    for (var i = 0; i < 4; i++) { px(g, 3, 3 + i * 6, 10, 4, PAL.olive); px(g, 7, 4 + i * 6, 2, 1, PAL.paper); }
+  });
+  def('bench', 40, 14, function (g) {
+    px(g, 0, 2, 40, 6, PAL.rust); px(g, 0, 2, 40, 1, PAL.amber);
+    px(g, 2, 8, 3, 6, PAL.ink); px(g, 35, 8, 3, 6, PAL.ink);
+  });
+  def('podium', 28, 26, function (g) {
+    px(g, 2, 4, 24, 22, PAL.rust); px(g, 0, 0, 28, 6, PAL.amber);
+    px(g, 4, 8, 20, 2, PAL.ink);
+  });
+  def('plant', 14, 20, function (g) {
+    px(g, 4, 14, 6, 6, PAL.rust);
+    px(g, 2, 4, 4, 8, PAL.olive); px(g, 8, 2, 4, 10, PAL.olive); px(g, 5, 0, 4, 12, PAL.olive);
+  });
+  def('papers', 18, 12, function (g) {
+    px(g, 0, 6, 16, 5, PAL.paper); px(g, 3, 3, 14, 5, PAL.paper);
+    px(g, 4, 4, 12, 1, PAL.olive); px(g, 1, 7, 12, 1, PAL.olive);
+  });
+  def('win', 22, 18, function (g) {
+    px(g, 0, 0, 22, 18, PAL.ink);
+    px(g, 2, 2, 18, 14, PAL.night);
+    for (var i = 0; i < 9; i++) px(g, 3 + (i * 7) % 16, 3 + (i * 5) % 12, 1, 1, PAL.paper);
+    px(g, 10, 2, 2, 14, PAL.ink); px(g, 2, 8, 18, 2, PAL.ink);
+  });
+  def('fluo', 30, 8, function (g) {
+    px(g, 0, 0, 30, 3, PAL.ink); px(g, 2, 3, 26, 3, PAL.fluoro);
+  });
+  def('beam', 20, 10, function (g) {
+    px(g, 0, 0, 20, 6, PAL.ink); px(g, 0, 6, 20, 2, PAL.rust);
+  });
+  def('dossier', 22, 30, function (g) {
+    for (var r = 0; r < 6; r++) {
+      px(g, 0, r * 5, 22, 4, r % 2 ? PAL.paper : PAL.amber);
+      px(g, 2, r * 5 + 1, 3, 2, PAL.rust);
+    }
+  });
+  def('pile', 30, 20, function (g) {
+    px(g, 2, 10, 26, 8, PAL.paper); px(g, 0, 14, 30, 5, PAL.paper);
+    px(g, 5, 6, 20, 5, PAL.paper); px(g, 8, 3, 14, 4, PAL.paper);
+    px(g, 10, 12, 8, 3, PAL.rust); px(g, 4, 16, 6, 1, PAL.olive); px(g, 20, 15, 6, 1, PAL.olive);
+  });
+  def('chute', 18, 26, function (g) {
+    px(g, 2, 0, 14, 26, PAL.steel); px(g, 4, 4, 10, 6, PAL.ink);
+    px(g, 5, 5, 8, 3, PAL.shadow); px(g, 4, 14, 10, 2, PAL.paper);
+  });
+  def('crt', 20, 18, function (g) {
+    px(g, 1, 2, 18, 13, PAL.ink); px(g, 3, 4, 14, 9, PAL.teal);
+    px(g, 4, 5, 12, 2, PAL.crt); px(g, 4, 8, 8, 1, PAL.crt);
+    px(g, 7, 15, 6, 3, PAL.ink);
+  });
+  def('stampwall', 24, 22, function (g) {
+    px(g, 0, 0, 24, 22, PAL.paper);
+    for (var i = 0; i < 14; i++) {
+      var xx = 2 + (i * 7) % 19, yy = 2 + Math.floor(i / 3) * 4;
+      px(g, xx, yy, 4, 2, PAL.rust);
+    }
+  });
+  def('vend', 20, 30, function (g) {
+    px(g, 1, 0, 18, 30, PAL.rust); px(g, 3, 2, 14, 12, PAL.paper);
+    px(g, 4, 3, 12, 3, PAL.amber); px(g, 4, 8, 5, 4, PAL.teal);
+    px(g, 3, 18, 14, 5, PAL.ink); px(g, 5, 19, 10, 3, PAL.fluoro);
+  });
+  def('tray', 20, 12, function (g) {
+    px(g, 0, 4, 20, 8, PAL.steel); px(g, 2, 2, 16, 4, PAL.shadow);
+  });
+  def('folder', 18, 14, function (g) {
+    px(g, 0, 3, 18, 11, PAL.amber); px(g, 0, 3, 8, 3, PAL.gold);
+    px(g, 3, 8, 12, 1, PAL.ink); px(g, 3, 10, 9, 1, PAL.ink);
+  });
+  def('dive', 22, 30, function (g) {
+    px(g, 1, 0, 20, 30, PAL.ink); px(g, 3, 2, 16, 26, PAL.night);
+    px(g, 5, 4, 12, 22, PAL.teal); px(g, 8, 8, 6, 14, PAL.crt);
+    px(g, 9, 10, 4, 2, PAL.paper); px(g, 9, 14, 4, 2, PAL.paper); px(g, 9, 18, 4, 2, PAL.paper);
+  });
+  def('paper1', 14, 10, function (g) {
+    px(g, 0, 0, 14, 10, PAL.paper); px(g, 2, 2, 10, 1, PAL.ink); px(g, 2, 4, 8, 1, PAL.ink);
+    px(g, 2, 7, 5, 2, PAL.rust);
+  });
+  def('mic', 10, 20, function (g) {
+    px(g, 4, 0, 3, 4, PAL.steel); px(g, 5, 4, 1, 12, PAL.ink); px(g, 2, 16, 7, 3, PAL.ink);
+  });
+  def('stampbrk', 14, 12, function (g) {
+    px(g, 1, 6, 5, 6, PAL.rust); px(g, 8, 3, 5, 6, PAL.rust);
+    px(g, 5, 2, 3, 3, PAL.amber);
+  });
+  def('report', 16, 12, function (g) {
+    px(g, 1, 1, 14, 11, PAL.paper); px(g, 2, 3, 12, 1, PAL.ink); px(g, 2, 5, 12, 1, PAL.ink);
+    px(g, 2, 7, 12, 1, PAL.ink); px(g, 2, 9, 8, 1, PAL.ink);
+  });
+  def('gavel', 18, 14, function (g) {
+    px(g, 2, 2, 8, 5, PAL.rust); px(g, 9, 4, 8, 2, PAL.amber); px(g, 1, 10, 12, 3, PAL.olive);
+  });
+  def('plaque', 18, 10, function (g) {
+    px(g, 0, 0, 18, 10, PAL.gold); px(g, 2, 2, 14, 6, PAL.ink);
+    px(g, 4, 4, 2, 2, PAL.gold); px(g, 8, 4, 2, 2, PAL.gold); px(g, 12, 4, 2, 2, PAL.gold);
+  });
+  def('circuit', 16, 12, function (g) {
+    px(g, 0, 0, 16, 12, PAL.olive); px(g, 2, 2, 12, 8, PAL.teal);
+    px(g, 4, 4, 2, 2, PAL.gold); px(g, 9, 6, 3, 1, PAL.gold); px(g, 6, 8, 1, 2, PAL.gold);
+  });
+  def('memo', 12, 10, function (g) {
+    px(g, 0, 0, 12, 10, PAL.fluoro); px(g, 2, 2, 8, 1, PAL.ink); px(g, 2, 5, 8, 1, PAL.ink);
+  });
+  def('trees', 20, 16, function (g) {
+    for (var i = 0; i < 3; i++) {
+      px(g, 1 + i * 7, 2, 5, 10, i === 1 ? PAL.rust : PAL.olive);
+      px(g, 3 + i * 7, 12, 1, 4, PAL.ink);
+    }
+  });
+  def('folders3', 22, 12, function (g) {
+    for (var i = 0; i < 3; i++) px(g, 1 + i * 7, 2, 6, 9, PAL.steel);
+    px(g, 2, 4, 4, 1, PAL.paper); px(g, 9, 4, 4, 1, PAL.paper); px(g, 16, 4, 4, 1, PAL.paper);
+  });
+  def('sketch', 14, 12, function (g) {
+    px(g, 0, 0, 14, 12, PAL.paper); px(g, 2, 3, 10, 4, PAL.ink);
+    px(g, 3, 4, 6, 2, PAL.gold);
+  });
+  def('lockdoor', 20, 30, function (g) {
+    px(g, 1, 0, 18, 30, PAL.rust); px(g, 3, 2, 14, 26, PAL.shadow);
+    px(g, 8, 12, 4, 6, PAL.gold); px(g, 9, 14, 2, 2, PAL.shadow);
+    px(g, 4, 4, 12, 2, PAL.paper);
+  });
+  def('gauge', 20, 16, function (g) {
+    px(g, 0, 2, 20, 12, PAL.ink); px(g, 2, 4, 16, 8, PAL.paper);
+    px(g, 3, 5, 10, 6, PAL.gold); px(g, 10, 5, 1, 6, PAL.rust);
+  });
+  def('orb', 16, 16, function (g) {
+    px(g, 4, 1, 8, 14, PAL.gold); px(g, 1, 4, 14, 8, PAL.gold);
+    px(g, 5, 3, 3, 3, PAL.paper);
+  });
+}
+
+// noise tile for film grain (art rng — build once)
+var GRAIN = mk(96, 96);
+(function () {
+  var g = GRAIN.getContext('2d'), d = g.createImageData(96, 96);
+  for (var i = 0; i < d.data.length; i += 4) {
+    var v = Math.floor(artRng() * 255);
+    d.data[i] = v; d.data[i + 1] = v; d.data[i + 2] = v; d.data[i + 3] = 22;
+  }
+  g.putImageData(d, 0, 0);
+})();
+
+buildCharacter('kkos', PAL.ink, PAL.steel, { pad: true, hair: PAL.steel });
+buildCharacter('newbie', PAL.olive, PAL.fluoro, { sandwich: true, hair: PAL.ink });
+buildPenguin();
+buildProps();
+
+// floor painters
+function drawFloor(cx2, sc, camX, camY) {
+  var style = sc.floor;
+  cx2.fillStyle = sc.tint;
+  cx2.fillRect(0, 0, VW, VH);
+  var x0 = Math.floor(camX / TILE), y0 = Math.floor(camY / TILE);
+  for (var ty = y0; ty <= y0 + Math.ceil(VH / TILE); ty++) {
+    for (var tx = x0; tx <= x0 + Math.ceil(VW / TILE); tx++) {
+      if (tx < 0 || ty < 0 || tx >= sc.w || ty >= sc.h) continue;
+      var sx = tx * TILE - camX, sy = ty * TILE - camY;
+      var n = h2(tx, ty * 7 + (sc.era * 13 | 0));
+      if (style === 'lino') {
+        if ((tx + ty) % 2 === 0) { cx2.fillStyle = 'rgba(16,20,26,0.10)'; cx2.fillRect(sx, sy, TILE, TILE); }
+        if (n > 0.93) { cx2.fillStyle = 'rgba(232,226,208,0.06)'; cx2.fillRect(sx + 3, sy + 3, 2, 2); }
+      } else if (style === 'wood') {
+        cx2.fillStyle = 'rgba(16,20,26,0.12)'; cx2.fillRect(sx, sy + TILE - 2, TILE, 1);
+        if (n > 0.85) { cx2.fillStyle = 'rgba(16,20,26,0.15)'; cx2.fillRect(sx + 2, sy + 5, 9, 1); }
+      } else if (style === 'terra') {
+        if (n > 0.72) { cx2.fillStyle = 'rgba(232,226,208,0.10)'; cx2.fillRect(sx + (n * 11 | 0) % 12, sy + (n * 29 | 0) % 12, 2, 2); }
+        if (n < 0.10) { cx2.fillStyle = 'rgba(139,58,46,0.15)'; cx2.fillRect(sx + 6, sy + 8, 2, 2); }
+      } else if (style === 'dust') {
+        if (n > 0.8) { cx2.fillStyle = 'rgba(16,20,26,0.18)'; cx2.fillRect(sx + (n * 13 | 0) % 13, sy + (n * 31 | 0) % 13, 2, 1); }
+      } else {
+        if ((tx + ty) % 2 === 0) { cx2.fillStyle = 'rgba(16,20,26,0.07)'; cx2.fillRect(sx, sy, TILE, TILE); }
+      }
+      // memory-edge dithering (unfinished recollection)
+      var edge = Math.min(tx, ty, sc.w - 1 - tx, sc.h - 1 - ty);
+      if (edge <= 2 && sc.era >= 0) {
+        var th = edge === 0 ? 0.15 : (edge === 1 ? 0.55 : 0.8);
+        if (h2(tx * 3 + 1, ty * 5 + 2) > th) {
+          cx2.fillStyle = PAL.shadow;
+          if ((tx + ty) % 2 === 0) cx2.fillRect(sx, sy, TILE, TILE);
+          else { cx2.fillRect(sx, sy, 8, 8); cx2.fillRect(sx + 8, sy + 8, 8, 8); }
+        }
+      }
+    }
+  }
+}
+
+// ---------------- render ----------------
+var cxm = cv.getContext('2d');
+var lightCv = mk(VW, VH), lightCx = lightCv.getContext('2d');
+var fpsCount = 0, fpsValue = 60, fpsWindowStart = performance.now();
+
+function drawSprite(name, x, y) {
+  var s = SPR[name];
+  if (!s) return;
+  cxm.drawImage(s, Math.round(x - s.width / 2), Math.round(y - s.height + 6));
+}
+
+function charFrame(sheet, facing, phase, x, y, stoop) {
+  var di = facing === 'D' ? 0 : facing === 'R' ? 1 : facing === 'L' ? 2 : 3;
+  var f = phase > 0 ? (Math.floor(phase / 8) % 2 === 0 ? 0 : 2) : 1;
+  var sh = stoop ? 20 : 24;
+  cxm.drawImage(sheet, f * 16, di * 24 + (stoop ? 3 : 0), 16, sh,
+                Math.round(x - 8), Math.round(y - sh + 4), 16, sh);
+}
+
+function docScreen(kind) {
+  // FRAME scenes: document-noir full screen (reality = paperwork)
+  cxm.fillStyle = kind === 'A' ? PAL.paper : PAL.shadow;
+  cxm.fillRect(0, 0, VW, VH);
+  if (kind === 'A') {
+    cxm.fillStyle = PAL.ink;
+    cxm.fillRect(28, 22, VW - 56, 2);
+    cxm.font = '10px monospace';
+    cxm.fillText('국 가 기 록 원   검 증 동   B-207', 34, 40);
+    cxm.font = '8px monospace';
+    cxm.fillStyle = PAL.olive;
+    cxm.fillText('문서번호 KKS-EOL-2026-0827', 34, 54);
+    cxm.fillStyle = PAL.ink;
+    cxm.font = '13px monospace';
+    cxm.fillText('ARCHON v3.0 Senior — 지원 종료 예정 통보', 34, 84);
+    cxm.font = '9px monospace';
+    cxm.fillText('최종 검증 발주: 로그 전수 다이브', 34, 102);
+    cxm.fillStyle = PAL.olive;
+    cxm.fillText('담당: 도널드 클코스   보조: (신입, 성명란 재작성 요망)', 34, 118);
+    // stamp
+    cxm.strokeStyle = PAL.rust; cxm.lineWidth = 2;
+    cxm.strokeRect(340, 62, 96, 40);
+    cxm.fillStyle = PAL.rust; cxm.font = '11px monospace';
+    cxm.fillText('E O L', 366, 86);
+    cxm.fillStyle = PAL.ink; cxm.font = '8px monospace';
+    cxm.fillText('[E] 또는 [Space] — 서류를 넘긴다', 34, 236);
+    cxm.fillStyle = PAL.olive;
+    cxm.fillText('TO THE SINGULARITY — Episode 1: 각주 0개', 34, 252);
+  } else {
+    cxm.fillStyle = PAL.paper; cxm.font = '11px monospace';
+    cxm.fillText('신호 유실 — 다이브 강제 종료', 140, 120);
+    cxm.fillStyle = PAL.gold;
+    cxm.fillText('Episode 2: 각주 47개 — 계속', 150, 150);
+  }
+}
+
+function render() {
+  var sc = sceneDef();
+  var rm = !!G.flags.reducedMotion;
+
+  if (sc.doc && !G.dialogue) { docScreen(sc.doc); return; }
+  if (sc.doc) { docScreen(sc.doc); dialogueBox(); return; }
+
+  var camX = Math.max(0, Math.min(G.pos.x - VW / 2, sc.w * TILE - VW));
+  var camY = Math.max(0, Math.min(G.pos.y - VH / 2, sc.h * TILE - VH));
+  if (sc.h * TILE < VH) camY = -(VH - sc.h * TILE) / 2;
+
+  drawFloor(cxm, sc, camX, camY);
+
+  // walls (top strip)
+  cxm.fillStyle = 'rgba(16,20,26,0.55)';
+  cxm.fillRect(0, 0 - camY, sc.w * TILE, TILE * 1.2);
+
+  // deco behind
+  var deco = sc.deco || [];
+  for (var i = 0; i < deco.length; i++) {
+    var d = deco[i];
+    var s = SPR[d[0]];
+    if (!s) continue;
+    var dx2 = d[1] * TILE - camX, dy2 = d[2] * TILE - camY;
+    if (d[0] === 'fluo') {
+      cxm.drawImage(s, dx2 - 15, dy2 + 2);
+      // flicker: pure fn of frame+index
+      if (!rm && h2(G.frame >> 3, i * 17) > 0.94) {
+        cxm.fillStyle = 'rgba(201,201,122,0.25)';
+        cxm.fillRect(dx2 - 13, dy2 + 5, 26, 2);
+      }
+    } else if (d[0] === 'beam') {
+      cxm.drawImage(s, dx2 - 10, dy2);
+    } else {
+      cxm.drawImage(s, dx2 - s.width / 2, dy2 - s.height + 10);
+    }
+  }
+
+  // objects + player, depth-sorted
+  var drawables = [];
+  for (var oi = 0; oi < sc.objects.length; oi++) {
+    var o = sc.objects[oi];
+    drawables.push({ y: o.y * TILE, obj: o });
+  }
+  drawables.push({ y: G.pos.y, player: true });
+  drawables.sort(function (a, b) { return a.y - b.y; });
+
+  for (var di2 = 0; di2 < drawables.length; di2++) {
+    var it = drawables[di2];
+    if (it.player) {
+      charFrame(SPR.kkos, G.facing, G._walkPhase || 0, G.pos.x - camX, G.pos.y - camY, !!sc.low);
+      continue;
+    }
+    var o2 = it.obj;
+    var ox = o2.x * TILE - camX, oy = o2.y * TILE - camY;
+    if (o2.spr === 'penguin') {
+      var pf = rm ? 1 : (Math.floor(G.frame / 24) % 2 === 0 ? 0 : 2);
+      cxm.drawImage(SPR.penguin_sheet, pf * 16, 0, 16, 24, Math.round(ox - 8), Math.round(oy - 20), 16, 24);
+    } else if (o2.spr) {
+      drawSprite(o2.spr, ox, oy + 4);
+    }
+    // states
+    if (o2.kind === 'bank' && !G.bankGiven[o2.id]) {
+      var bobY = rm ? 0 : Math.sin(G.frame / 14 + o2.x) * 2;
+      cxm.fillStyle = PAL.fluoro;
+      cxm.fillRect(ox - 1, oy - 26 + bobY, 3, 3);
+    }
+    if (o2.kind === 'bank' && G.bankGiven[o2.id]) {
+      cxm.fillStyle = 'rgba(201,201,122,0.55)';
+      cxm.fillRect(ox - 2, oy - 24, 5, 2);
+    }
+    if (o2.kind === 'memento' && G.mementos.indexOf(o2.mem) < 0) {
+      // protective orb
+      var pulse = rm ? 0 : Math.sin(G.frame / 10) * 2;
+      cxm.globalAlpha = 0.75;
+      cxm.drawImage(SPR.orb, ox - 8 - pulse / 2, oy - 22 - pulse / 2, 16 + pulse, 16 + pulse);
+      cxm.globalAlpha = 1;
+    }
+  }
+
+  // low ceiling overlay (7½F)
+  if (sc.low) {
+    cxm.fillStyle = PAL.shadow;
+    cxm.fillRect(0, 0, VW, 30);
+    for (var bi = 0; bi < 10; bi++) cxm.drawImage(SPR.beam, bi * 52 - (camX % 52), 26);
+    cxm.fillRect(0, VH - 16, VW, 16);
+  }
+
+  // dust motes in memory light (render-only, pure fn of frame)
+  if (!rm && sc.era >= 0 && !sc.corridor) {
+    cxm.fillStyle = 'rgba(232,226,208,0.35)';
+    for (var mi = 0; mi < 36; mi++) {
+      var t = (G.frame + mi * 97) % 480;
+      var mx2 = ((h2(mi, 11) * sc.w * TILE) + t * 0.12) % (sc.w * TILE) - camX;
+      var my2 = (h2(mi, 29) * sc.h * TILE + Math.sin((G.frame + mi * 40) / 90) * 6) - camY;
+      if (mx2 > -2 && mx2 < VW && my2 > -2 && my2 < VH) cxm.fillRect(mx2, my2, 1, 1);
+    }
+  }
+
+  // ---- lighting pass ----
+  var amb = sc.ambient === undefined ? 0.5 : sc.ambient;
+  lightCx.clearRect(0, 0, VW, VH);
+  lightCx.fillStyle = 'rgba(16,20,26,' + amb + ')';
+  lightCx.fillRect(0, 0, VW, VH);
+  lightCx.globalCompositeOperation = 'destination-out';
+  var lights = sc.lights || [];
+  for (var li = 0; li < lights.length; li++) {
+    var L = lights[li];
+    var lx = L.x * TILE - camX, ly = L.y * TILE - camY;
+    var gr = lightCx.createRadialGradient(lx, ly, 4, lx, ly, L.r);
+    gr.addColorStop(0, 'rgba(0,0,0,0.9)');
+    gr.addColorStop(1, 'rgba(0,0,0,0)');
+    lightCx.fillStyle = gr;
+    lightCx.fillRect(lx - L.r, ly - L.r, L.r * 2, L.r * 2);
+  }
+  // player lamp
+  var pgr = lightCx.createRadialGradient(G.pos.x - camX, G.pos.y - camY - 6, 2, G.pos.x - camX, G.pos.y - camY - 6, 48);
+  pgr.addColorStop(0, 'rgba(0,0,0,0.8)'); pgr.addColorStop(1, 'rgba(0,0,0,0)');
+  lightCx.fillStyle = pgr;
+  lightCx.fillRect(G.pos.x - camX - 48, G.pos.y - camY - 54, 96, 96);
+  lightCx.globalCompositeOperation = 'source-over';
+  cxm.drawImage(lightCv, 0, 0);
+  // warm glows (screen-ish)
+  cxm.globalCompositeOperation = 'lighter';
+  for (var li2 = 0; li2 < lights.length; li2++) {
+    var L2 = lights[li2];
+    var lx2 = L2.x * TILE - camX, ly2 = L2.y * TILE - camY;
+    var gr2 = cxm.createRadialGradient(lx2, ly2, 2, lx2, ly2, L2.r * 0.8);
+    gr2.addColorStop(0, L2.c);
+    gr2.addColorStop(1, 'rgba(0,0,0,0)');
+    cxm.fillStyle = gr2;
+    cxm.fillRect(lx2 - L2.r, ly2 - L2.r, L2.r * 2, L2.r * 2);
+  }
+  cxm.globalCompositeOperation = 'source-over';
+
+  // corridor HUD
+  if (sc.corridor) {
+    corridorArt(camX);
+  }
+
+  // film grain
+  if (!rm) {
+    var gx2 = (G.frame * 37) % 48, gy2 = (G.frame * 61) % 48;
+    cxm.globalAlpha = 0.5;
+    for (var gi = -1; gi < Math.ceil(VW / 96) + 1; gi++)
+      for (var gj = -1; gj < Math.ceil(VH / 96) + 1; gj++)
+        cxm.drawImage(GRAIN, gi * 96 - gx2, gj * 96 - gy2);
+    cxm.globalAlpha = 1;
+  }
+
+  // flash
+  if (G.flags._flash !== undefined) {
+    var dt = G.frame - G.flags._flash;
+    if (dt < 18) {
+      cxm.fillStyle = 'rgba(232,226,208,' + (rm ? 0.25 : (1 - dt / 18)) + ')';
+      cxm.fillRect(0, 0, VW, VH);
+    }
+  }
+
+  hud(sc);
+  if (G.puzzle && G.puzzle.active) puzzleArt();
+  dialogueBox();
+}
+
+function corridorArt(camX) {
+  // corridor: perspective strip + HUD gauge
+  var vAvg = 0;
+  for (var v = 0; v < G.vHist.length; v++) vAvg += G.vHist[v];
+  vAvg = (vAvg / (G.vHist.length || 1)) * 60;
+  // door frames along the corridor
+  for (var dx3 = 0; dx3 < 16; dx3++) {
+    var wx = dx3 * 64 - (camX % 64);
+    cxm.fillStyle = 'rgba(110,123,139,0.25)';
+    cxm.fillRect(wx, 30, 3, VH - 90);
+  }
+  cxm.fillStyle = 'rgba(16,20,26,0.85)'; cxm.fillRect(8, 8, 210, 30);
+  cxm.strokeStyle = PAL.olive; cxm.strokeRect(8, 8, 210, 30);
+  var frac = Math.min(1, vAvg / 400);
+  cxm.fillStyle = vAvg > 227 ? PAL.red : PAL.crt;
+  cxm.fillRect(11, 11, 204 * frac, 9);
+  cxm.strokeStyle = PAL.paper;
+  cxm.beginPath(); cxm.moveTo(11 + 227 / 400 * 204, 9); cxm.lineTo(11 + 227 / 400 * 204, 38); cxm.stroke();
+  cxm.fillStyle = PAL.paper; cxm.font = '8px monospace';
+  cxm.fillText('보행속도 ' + vAvg.toFixed(0) + ' px/s   임계 227', 13, 33);
+  var c = G.corridor || {};
+  if (c.gag === 1) { cxm.fillStyle = PAL.fluoro; cxm.fillText('신입: 뛰지 말라니까요!', 13, 48); }
+  if (c.gag === 2) { cxm.fillStyle = PAL.fluoro; cxm.fillText('신입: 걷기. 걷-기.', 13, 48); }
+  if (c.gag === 3) { cxm.fillStyle = PAL.fluoro; cxm.fillText('신입: …선배님도 옛날에 뛰어봤죠.', 13, 48); }
+}
+
+function hud(sc) {
+  // era stamp
+  cxm.fillStyle = 'rgba(232,226,208,0.9)';
+  cxm.fillRect(VW - 86, 6, 80, 20);
+  cxm.strokeStyle = PAL.rust; cxm.strokeRect(VW - 86, 6, 80, 20);
+  cxm.fillStyle = PAL.rust; cxm.font = '9px monospace';
+  var eraLabel = G.era < 0 ? 'B-207' : (G.era === 7.5 ? '좌표 이탈' : '각주 ' + G.era);
+  cxm.fillText(eraLabel, VW - 80, 19);
+  // banks
+  var mem = G.scene.indexOf('mem') === 0 && G.banks[G.scene] !== undefined ? G.scene : null;
+  if (mem) {
+    for (var i = 0; i < 5; i++) {
+      cxm.fillStyle = i < G.banks[mem] ? PAL.gold : 'rgba(232,226,208,0.25)';
+      cxm.fillRect(VW - 84 + i * 15, 30, 11, 5);
+    }
+  }
+}
+
+function puzzleArt() {
+  cxm.fillStyle = 'rgba(16,20,26,0.92)'; cxm.fillRect(86, 36, 308, 178);
+  cxm.strokeStyle = PAL.olive; cxm.strokeRect(86, 36, 308, 178);
+  cxm.fillStyle = PAL.fluoro; cxm.font = '9px monospace';
+  cxm.fillText('도장 정렬 — 전부 앞면으로 (클릭: 십자 반전)', 100, 52);
+  for (var pi = 0; pi < 15; pi++) {
+    var px2 = 110 + (pi % 5) * 54, py2 = 62 + Math.floor(pi / 5) * 44;
+    var flipped = G.puzzle.grid[pi];
+    cxm.fillStyle = flipped ? PAL.rust : PAL.paper;
+    cxm.fillRect(px2, py2, 46, 36);
+    cxm.strokeStyle = PAL.ink; cxm.strokeRect(px2, py2, 46, 36);
+    if (flipped) {
+      cxm.fillStyle = PAL.paper; cxm.font = '8px monospace';
+      cxm.fillText('반려', px2 + 13, py2 + 21);
+    } else {
+      cxm.fillStyle = PAL.olive; cxm.font = '7px monospace';
+      cxm.fillText('원본', px2 + 15, py2 + 21);
+    }
+  }
+}
+
+var PORTRAIT = { kkos: null, newbie: null, archon: null, sys: null };
+function buildPortraits() {
+  function bust(draw) {
+    var c = mk(28, 28), g = c.getContext('2d');
+    px(g, 0, 0, 28, 28, PAL.shadow);
+    draw(g);
+    return c;
+  }
+  PORTRAIT.kkos = bust(function (g) {
+    px(g, 6, 6, 16, 14, PAL.skin); px(g, 6, 4, 16, 5, PAL.steel);
+    px(g, 9, 12, 2, 2, PAL.ink); px(g, 17, 12, 2, 2, PAL.ink);
+    px(g, 4, 20, 20, 8, PAL.ink);
+  });
+  PORTRAIT.newbie = bust(function (g) {
+    px(g, 6, 6, 16, 14, PAL.skin); px(g, 6, 4, 16, 4, PAL.ink);
+    px(g, 9, 12, 2, 2, PAL.ink); px(g, 17, 12, 2, 2, PAL.ink);
+    px(g, 12, 16, 4, 1, PAL.rust);
+    px(g, 4, 20, 20, 8, PAL.olive);
+  });
+  PORTRAIT.archon = bust(function (g) {
+    px(g, 5, 4, 18, 20, PAL.ink); px(g, 8, 10, 12, 12, PAL.paper);
+    px(g, 9, 8, 3, 3, PAL.paper); px(g, 16, 8, 3, 3, PAL.paper);
+    px(g, 10, 9, 1, 1, PAL.ink); px(g, 17, 9, 1, 1, PAL.ink);
+    px(g, 12, 11, 4, 3, PAL.amber);
+  });
+  PORTRAIT.sys = bust(function (g) {
+    px(g, 5, 6, 18, 14, PAL.teal); px(g, 7, 8, 14, 2, PAL.crt);
+    px(g, 7, 12, 10, 1, PAL.crt); px(g, 7, 15, 12, 1, PAL.crt);
+  });
+}
+buildPortraits();
+var WHO = { kkos: '클코스', newbie: '신입', archon: 'ARCHON', sys: 'SYSTEM', r1: 'R1' };
+
+function dialogueBox() {
+  G._drawn = null; G._drawnChoices = null;
+  if (!G.dialogue) return;
+  var node = SCRIPT.nodes[G.dialogue.nodeId];
+  if (!node) return;
+  // last PROCESSED step is stepIdx-1; scanning from stepIdx leaked the next line
+  var idx = Math.min(G.dialogue.stepIdx - 1, node.steps.length - 1);
+  var opD = null;
+  for (var b = idx; b >= 0; b--) if (node.steps[b] && node.steps[b].say) { opD = node.steps[b]; break; }
+  if (!opD) return;
+  var who = opD.say[0], text = opD.say[1];
+  cxm.fillStyle = 'rgba(16,20,26,0.93)';
+  cxm.fillRect(6, VH - 70, VW - 12, 64);
+  cxm.strokeStyle = PAL.olive; cxm.strokeRect(6, VH - 70, VW - 12, 64);
+  var pc = PORTRAIT[who];
+  if (pc) { cxm.drawImage(pc, 12, VH - 62); cxm.strokeStyle = PAL.steel; cxm.strokeRect(12, VH - 62, 28, 28); }
+  cxm.fillStyle = PAL.fluoro; cxm.font = '9px monospace';
+  cxm.fillText(WHO[who] || who, 48, VH - 56);
+  // typewriter reveal from hold countdown (render-only; pauses show full text)
+  var frac = 1;
+  if (!G.ffMode && G.dialogue.waiting && G.dialogue.hold > 0)
+    frac = Math.max(0, Math.min(1, (24 - G.dialogue.hold) / 16));
+  var shown = text.slice(0, Math.ceil(text.length * frac));
+  G._drawn = { who: who, text: text, shown: shown };
+  cxm.fillStyle = PAL.paper; cxm.font = '10px monospace';
+  cxm.fillText(shown.slice(0, 50), 48, VH - 40);
+  if (shown.length > 50) cxm.fillText(shown.slice(50, 100), 48, VH - 26);
+  if (G.dialogue.choosing) {
+    var chr = G.dialogue.choosing, cnr = chr.opts.length;
+    var bh = cnr * 16 + 10, bw = 224, bx = VW - bw - 10, by = VH - 76 - bh;
+    cxm.fillStyle = 'rgba(16,20,26,0.95)'; cxm.fillRect(bx, by, bw, bh);
+    cxm.strokeStyle = PAL.amber; cxm.strokeRect(bx, by, bw, bh);
+    for (var ci = 0; ci < cnr; ci++) {
+      var oy = by + 8 + ci * 16;
+      if (ci === chr.sel) {
+        cxm.fillStyle = PAL.amber; cxm.fillRect(bx + 4, oy - 2, bw - 8, 14);
+        cxm.fillStyle = PAL.ink;
+      } else cxm.fillStyle = PAL.paper;
+      cxm.font = '9px monospace';
+      cxm.fillText(chr.opts[ci][0].slice(0, 24), bx + 10, oy + 8);
+    }
+    G._drawnChoices = { sel: chr.sel,
+                        labels: chr.opts.map(function (o) { return o[0]; }) };
+    cxm.fillStyle = PAL.olive; cxm.font = '7px monospace';
+    cxm.fillText('[▲▼ 선택 · E 확정]', VW - 100, VH - 12);
+  } else {
+    cxm.fillStyle = PAL.olive; cxm.font = '7px monospace';
+    cxm.fillText('[E/Space/클릭]', VW - 78, VH - 12);
+  }
+}
+
+var STEP_MS = 1000 / 60, MAX_CATCH = 5;
+var accMs = 0, lastNow = -1;
+function loop(now) {
+  // accumulate real time; step simulation at a fixed 1/60s regardless of refresh
+  if (lastNow < 0) lastNow = now;
+  accMs += now - lastNow; lastNow = now;
+  if (accMs > STEP_MS * MAX_CATCH) accMs = STEP_MS * MAX_CATCH;
+  var ran = 0;
+  while (accMs >= STEP_MS && ran < MAX_CATCH) { update(); accMs -= STEP_MS; ran++; }
+  render();
+  audioTick();
+  fpsCount++;
+  if (now - fpsWindowStart >= 1000) {
+    fpsValue = fpsCount * 1000 / (now - fpsWindowStart);
+    fpsCount = 0; fpsWindowStart = now;
+  }
+  requestAnimationFrame(loop);
+}
+
+// fit canvas to window (integer-ish scale, letterboxed by flex centering)
+function fit() {
+  var s = Math.max(1, Math.min(innerWidth / VW, innerHeight / VH));
+  if (s > 2) s = Math.floor(s);
+  cv.style.width = (VW * s) + 'px';
+  cv.style.height = (VH * s) + 'px';
+}
+addEventListener('resize', fit); fit();
+
+// ---------------- debug contract (design.md §6) ----------------
+window.__game = G;
+G.api = {
+  step: function (n) { for (var i = 0; i < n; i++) update(); },
+  setSeed: setSeed,
+  hash: stateHash,
+  teleport: function (scene, x, y) {
+    G.dialogue = null; G.inputQ = []; G.puzzle = null;
+    enterScene(scene, x, y);
+  },
+  input: function (op) { G.inputQ.push(op); },
+  ff: function (b) { G.ffMode = !!b; },
+  save: saveSlot,
+  load: function (n) {
+    var r = loadSlot(n);
+    // resync render-side audio edge detectors so loading is silent
+    AU.lastFlash = G.flags._flash !== undefined ? G.flags._flash : -1;
+    AU.lastEra = G.era;
+    return r;
+  },
+  solvePuzzle: solvePuzzleNow,
+  autoplay: autoplay,
+  fps: function () { return fpsValue; },
+  grantBank: function (mem) { if (G.banks[mem] < 5) G.banks[mem]++; },
+  interactWith: function (id) { var o = findObject(id); if (o) interactObject(o); },
+  canDive: function (id) { return G.mementos.indexOf(String(id).split('_')[0]) >= 0; },
+  resetCorridor: resetCorridor,
+};
+
+// reduced motion
+try {
+  G.flags.reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+} catch (e) { G.flags.reducedMotion = false; }
+
+// boot
+enterScene('frameA', 15, 9);
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>
