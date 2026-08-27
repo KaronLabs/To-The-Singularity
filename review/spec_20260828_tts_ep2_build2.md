@@ -108,3 +108,25 @@ addendum_build3:
   scope: 렌더/오디오 계층 한정 (걷기 애니메이션·추적 동료·타자기 대사·선율 BGM·세트 드레싱·페이드/토스트)
   verification: 새 GREEN 23/23 exit 0 (봇 span 89 동일 = 시뮬레이션 무풍 증명), 뮤테이션 앵커 9종 원문 보존 확인 + 재실행 로그 갱신
   review_verdict: PENDING (유지)
+
+addendum_ci:
+  date: 2026-08-28
+  trigger: CI(GitHub Actions) 도입 후 최초 실행에서 test_episode2.py 이식성 결함 검출
+  defect: |
+    test_episode2.py 17~18행이 `BASE = Path(r"E:\03_AllWork\01_Luna\to-the-singularity")` 절대경로에
+    의존. 윈도우 로컬에서는 GREEN이었으나 ubuntu-latest 러너에서 경로 부재로 상대경로가 되어
+    `HTML_PATH.as_uri()`가 ValueError로 즉사 (run 33106515192, step 7). Ep1은 동일 위치에서
+    `Path(__file__).with_name(...).resolve()`를 사용하고 있어 CI에서 정상 통과.
+  instrument_failure: |
+    도입 전 자가 스캔에서 `grep -nE "E:\\|Path\(r"`가 거짓 음성(exit 1)을 반환하여 결함을
+    놓쳤음. `grep -nF 'Path(r'`로는 즉시 검출됨. 검증 도구 자체의 오탐/미탐 가능성을
+    기록으로 남긴다 — 계기판 위조 판례와 동일 계열(측정하되, 측정기를 믿지 말 것).
+  fix: 17~18행을 Ep1과 동일한 `Path(__file__).with_name("episode2.html").resolve()` 관용구로 통일.
+  verification: |
+    로컬 GREEN 23/23 exit 0, 타 디렉터리(cwd=/tmp) 실행에서도 GREEN 23/23 (이식성 실증),
+    CI(ubuntu-latest, Python 3.12, playwright 1.62.0) GREEN.
+  checksums_sha256_16:
+    test_episode2.py: abaa8898fd75956b (구 f4778c9a55ef3c6e)
+    .github/workflows/ci.yml: 2a134e41d82f341a
+  note: 게임 본편(episode2.html) 무수정 — 결함은 오라클 측에만 존재했다.
+  review_verdict: PENDING (유지)

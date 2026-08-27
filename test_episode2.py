@@ -14,8 +14,7 @@ from playwright.sync_api import sync_playwright
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
-BASE = Path(r"E:\03_AllWork\01_Luna\to-the-singularity")
-HTML_PATH = BASE / "episode2.html"
+HTML_PATH = Path(__file__).with_name("episode2.html").resolve()
 URL = HTML_PATH.as_uri()
 
 RED_OBSERVE = os.environ.get("RED_OBSERVE") == "1"
