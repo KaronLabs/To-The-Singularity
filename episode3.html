@@ -1299,6 +1299,12 @@ cv.addEventListener('touchstart', function (e) {
     return;
   }
 
+  // 승소 확률 게이지 — 두드림을 입력으로 인식 (+1) (touch)
+  if (mx >= VW - 130 && mx <= VW - 8 && my >= 30 && my <= 46) {
+    G._gauge += 1;
+    return;
+  }
+
   if (G.dialogue) {
     if (G.dialogue.choosing) {
       var chr = G.dialogue.choosing, cnr = chr.opts.length;

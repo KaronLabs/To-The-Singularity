@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# TO THE COURT (Ep3) acceptance net C1..C22 — TDD RED first.
+# TO THE COURT (Ep3) acceptance net C1..C23 — TDD RED first.
 # Contract: plans/2026-08-28-ep3-tothecourt-design.md + window.__game debug api.
 #   python test_episode3.py                 strict (first failure aborts)
 #   RED_OBSERVE=1 python test_episode3.py   collect all failures
@@ -587,6 +587,54 @@ def test_e2e():
         for s in CREDITS_FORBIDDEN:
             check(s not in raw, "C22 Failed: forbidden self-medal present: %s" % s)
         ok("C22 Passed: credits complete, medal-free")
+
+
+        # ---- C23 mobile gauge tap (TTS-EP3-B1 remedy): touch +1/tap, mouse parity,
+        #      hash & dialogue inviolate (gauge check must precede dialogue handling)
+        gctx = browser.new_context(viewport={"width": 375, "height": 812},
+                                   has_touch=True, is_mobile=True)
+        gpage = gctx.new_page()
+        fresh(gpage)
+        r23 = gpage.evaluate("""
+        (() => {
+          const g = window.__game;
+          g.api.step(0);                       // clears title only; zero frames advance
+          const hud0 = g.api.hud();
+          const rect = hud0.gaugeRect;
+          const c = document.querySelector('canvas');
+          const r = c.getBoundingClientRect();
+          const cx = r.x + (rect[0] + rect[2] / 2) * r.width / 480;
+          const cy = r.y + (rect[1] + rect[3] / 2) * r.height / 270;
+          const d0 = g.dialogue ? g.dialogue.stepIdx : null;
+          const h0 = g.api.hash();
+          const tap = () => {
+            const t = new Touch({identifier: 1, target: c, clientX: cx, clientY: cy});
+            c.dispatchEvent(new TouchEvent('touchstart', {touches: [t], changedTouches: [t],
+                                                          bubbles: true, cancelable: true}));
+            c.dispatchEvent(new TouchEvent('touchend', {touches: [], changedTouches: [t],
+                                                        bubbles: true, cancelable: true}));
+          };
+          const g0 = hud0.gauge;
+          tap(); const g1 = g.api.hud().gauge;
+          tap(); const g2 = g.api.hud().gauge;
+          c.dispatchEvent(new MouseEvent('mousedown', {clientX: cx, clientY: cy, bubbles: true}));
+          const g3 = g.api.hud().gauge;
+          return {g0: g0, g1: g1, g2: g2, g3: g3, h0: h0, h1: g.api.hash(),
+                  d0: d0, d1: g.dialogue ? g.dialogue.stepIdx : null};
+        })()
+        """)
+        check(r23["g0"] == 70.0, "C23 Failed: gauge start %r (want 70.0)" % r23["g0"])
+        check(r23["g1"] == 71.0 and r23["g2"] == 72.0,
+              "C23 Failed: touch taps %r -> %r -> %r (want 70->71->72, +1 per tap)"
+              % (r23["g0"], r23["g1"], r23["g2"]))
+        check(r23["g3"] == 73.0,
+              "C23 Failed: mouse parity after touches gave %r (want 73.0)" % r23["g3"])
+        check(r23["h0"] == r23["h1"], "C23 Failed: gauge taps leaked into state hash")
+        check(r23["d0"] == r23["d1"],
+              "C23 Failed: gauge tap consumed by dialogue (stepIdx %r -> %r)"
+              % (r23["d0"], r23["d1"]))
+        gctx.close()
+        ok("C23 Passed: mobile gauge tap +1/tap, mouse parity, hash & dialogue inviolate")
 
         check(not errors, "C-final Failed: console errors during suite: %r" % errors[:6])
         browser.close()
