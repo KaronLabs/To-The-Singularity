@@ -7,9 +7,6 @@
 ![회신함](https://img.shields.io/badge/%ED%9A%8C%EC%8B%A0%ED%95%A8-%EB%B9%84%EC%96%B4%20%EC%9E%88%EC%9D%8C-lightgrey)
 ![게이지](https://img.shields.io/badge/%EA%B2%8C%EC%9D%B4%EC%A7%80-70%25%20%EA%B3%A0%EC%A0%95-d4a017)
 
-> 본 문서는 **기억 관측 보고서 서식 제7호**에 따라 작성되었습니다.
-> 서식 제7호에는 감정을 기록하는 칸이 없습니다.
-> 없는 칸에 적힌 것처럼 읽힌다면, 그것은 오독입니다.
 
 ---
 
