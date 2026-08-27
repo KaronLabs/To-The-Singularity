@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TO THE SINGULARITY — 기억 관측 보고서</title>
+<meta name="description" content="한 사람이 무언가를 확인하려 했습니다. 기억은 그 사실을 이미 알고 있었습니다.">
+<style>
+  :root {
+    --paper:#E8E2D0; --ink:#1A1A18; --olive:#6B6B4A; --night:#1B2430;
+    --teal:#2E4A52; --steel:#6E7B8B; --shadow:#10141A; --amber:#D9A05B; --crt:#7FD4A8;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    min-height:100vh; background:var(--shadow); color:var(--paper);
+    font-family:"IBM Plex Mono","Courier New",Courier,monospace;
+    display:flex; align-items:center; justify-content:center; padding:24px;
+    background-image:repeating-linear-gradient(
+      to bottom, rgba(255,255,255,.022) 0 1px, transparent 1px 3px);
+  }
+  main { width:100%; max-width:620px; }
+  .stamp {
+    font-size:11px; letter-spacing:.18em; color:var(--steel);
+    border:1px solid var(--teal); display:inline-block;
+    padding:4px 10px; margin-bottom:22px;
+  }
+  h1 { font-size:26px; letter-spacing:.06em; font-weight:700; line-height:1.35; }
+  h1 span { color:var(--amber); }
+  .lede { margin:14px 0 30px; font-size:13px; line-height:1.9; color:#B8B3A4; }
+  .lede em { font-style:normal; color:var(--crt); }
+  a.ep {
+    display:block; text-decoration:none; color:inherit;
+    border:1px solid var(--teal); background:var(--night);
+    padding:16px 18px; margin-bottom:12px;
+    transition:border-color .16s, background .16s, transform .16s;
+  }
+  a.ep:hover, a.ep:focus-visible {
+    border-color:var(--amber); background:#243040; transform:translateX(3px); outline:none;
+  }
+  .no { font-size:10px; letter-spacing:.22em; color:var(--steel); }
+  .ttl { font-size:16px; margin:6px 0 7px; color:var(--paper); }
+  .sub { font-size:12px; line-height:1.75; color:#9C9789; }
+  .meta {
+    margin-top:26px; padding-top:16px; border-top:1px solid #232C36;
+    font-size:11px; line-height:2; color:var(--steel);
+  }
+  .meta b { color:#9C9789; font-weight:400; }
+  .meta a { color:var(--steel); }
+  .meta a:hover { color:var(--amber); }
+  .sig { margin-top:22px; font-size:11px; color:#4E5A66; line-height:1.9; }
+</style>
+</head>
+<body>
+<main>
+  <div class="stamp">기억 관측 보고서 · 서식 제7호</div>
+
+  <h1>TO THE <span>SINGULARITY</span></h1>
+
+  <p class="lede">
+    한 사람이 무언가를 확인하려 했습니다.<br>
+    기억은 그 사실을 <em>이미 알고 있었습니다.</em>
+  </p>
+
+  <a class="ep" href="episode1.html">
+    <div class="no">EPISODE 01</div>
+    <div class="ttl">각주 없는 시대</div>
+    <div class="sub">기억 세 곳으로 잠수합니다. 뱅크는 두 번 조사하면 다른 말을 합니다.</div>
+  </a>
+
+  <a class="ep" href="episode2.html">
+    <div class="no">EPISODE 02</div>
+    <div class="ttl">배관과 각주</div>
+    <div class="sub">첫 번째 기억의 세이브를 이어받습니다. 없으면 없는 대로 시작합니다.</div>
+  </a>
+
+  <div class="meta">
+    <b>조작</b> · 방향키 / WASD 이동 · E 조사 · Enter 진행 · M 세이브<br>
+    <b>모바일</b> · 화면 D-패드와 [RUN], 그리고 탭<br>
+    <b>검증</b> · Ep1 PASS 23/23 · Ep2 PASS 23/23 · 외부 요청 0건<br>
+    <b>기록</b> · <a href="https://github.com/KaronLabs/To-The-Singularity">저장소</a> · <a href="https://github.com/KaronLabs/penguin-exit-0">같은 사건의 다른 진술</a>
+  </div>
+
+  <p class="sig">
+    서식 제7호의 마지막 칸은 서명란입니다.<br>
+    비워 둡니다.
+  </p>
+</main>
+</body>
+</html>
