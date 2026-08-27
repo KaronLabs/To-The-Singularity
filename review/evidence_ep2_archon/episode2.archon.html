@@ -1,0 +1,1313 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>TO THE SINGULARITY — Ep2: 각주 47개와 4차원 서류 슈트</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 100%; height: 100%;
+  background: #10141A;
+  color: #E8E2D0;
+  font-family: monospace, sans-serif;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+#wrapper {
+  position: relative;
+  width: 100vw; height: 100vh;
+  max-width: 177.78vh; max-height: 56.25vw;
+  display: flex; justify-content: center; align-items: center;
+}
+canvas {
+  width: 100%; height: 100%;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  background: #000;
+  display: block;
+}
+</style>
+</head>
+<body>
+<div id="wrapper">
+  <canvas id="stage" width="480" height="270"></canvas>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+// ============================================================================
+// 1. PALETTE & PRNG (mulberry32) & FNV-1a
+// ============================================================================
+var PAL = {
+  paper:  '#E8E2D0',
+  ink:    '#1A1A18',
+  olive:  '#6B6B4A',
+  rust:   '#8B3A2E',
+  fluoro: '#C9C97A',
+  night:  '#1B2430',
+  teal:   '#2E4A52',
+  steel:  '#6E7B8B',
+  shadow: '#10141A',
+  amber:  '#D9A05B',
+  gold:   '#E5C558',
+  skin:   '#D8B79A',
+  crt:    '#7FD4A8',
+  red:    '#B33A2E',
+  brass:  '#C89D42',
+  copper: '#A85A32'
+};
+
+var _seed = 1337;
+function setSeed(s) { _seed = s >>> 0; }
+function rnd() {
+  _seed = (_seed + 0x6D2B79F5) >>> 0;
+  var t = Math.imul(_seed ^ (_seed >>> 15), 1 | _seed);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+
+function fnv1a(str) {
+  var h = 0x811C9DC5;
+  for (var i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16);
+}
+
+// ============================================================================
+// 2. PROCEDURAL SPRITE & TILE ATLAS GENERATOR
+// ============================================================================
+var SPR = {};
+function makeCanvas(w, h) {
+  var c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  return c;
+}
+
+function initAtlas() {
+  // 1. Klkos Coat (24x32)
+  var cK = makeCanvas(24, 32);
+  var xK = cK.getContext('2d');
+  xK.fillStyle = PAL.olive; xK.fillRect(4, 8, 16, 20); // coat
+  xK.fillStyle = PAL.skin;  xK.fillRect(8, 2, 8, 8);   // face
+  xK.fillStyle = PAL.ink;   xK.fillRect(6, 0, 12, 4);  // hair
+  xK.fillStyle = PAL.paper; xK.fillRect(16, 12, 6, 8); // legal pad
+  SPR['kkos_coat'] = cK;
+
+  // 2. Newbie Mech (24x32)
+  var cN = makeCanvas(24, 32);
+  var xN = cN.getContext('2d');
+  xN.fillStyle = PAL.teal;  xN.fillRect(4, 10, 16, 18); // workwear
+  xN.fillStyle = PAL.skin;  xN.fillRect(8, 2, 8, 8);    // face
+  xN.fillStyle = PAL.rust;  xN.fillRect(6, 0, 12, 4);   // cap
+  xN.fillStyle = PAL.brass; xN.fillRect(2, 14, 4, 10);  // wrench
+  SPR['newbie_mech'] = cN;
+
+  // 3. Archon Era 31 (24x24)
+  var cA31 = makeCanvas(24, 24);
+  var xA31 = cA31.getContext('2d');
+  xA31.fillStyle = PAL.ink;   xA31.fillRect(4, 4, 16, 18); // body
+  xA31.fillStyle = PAL.paper; xA31.fillRect(8, 8, 8, 12);  // belly
+  xA31.fillStyle = PAL.amber; xA31.fillRect(10, 8, 4, 3);  // beak
+  xA31.fillStyle = PAL.copper; xA31.fillRect(6, 6, 12, 2); // patch cord
+  xA31.fillStyle = PAL.brass; xA31.fillRect(2, 14, 6, 8);  // mini harpsichord
+  SPR['archon31'] = cA31;
+
+  // 4. Archon Era 47 (24x24)
+  var cA47 = makeCanvas(24, 24);
+  var xA47 = cA47.getContext('2d');
+  xA47.fillStyle = PAL.gold;  xA47.fillRect(2, 2, 20, 20); // aura
+  xA47.fillStyle = PAL.ink;   xA47.fillRect(4, 4, 16, 18); // body
+  xA47.fillStyle = PAL.paper; xA47.fillRect(8, 8, 8, 12);  // belly
+  xA47.fillStyle = PAL.amber; xA47.fillRect(10, 8, 4, 3);  // beak
+  xA47.fillStyle = PAL.brass; xA47.fillRect(6, 0, 12, 6);  // pipe organ pipes
+  SPR['archon47'] = cA47;
+
+  // 5. Bibix Hologram (24x32)
+  var cB = makeCanvas(24, 32);
+  var xB = cB.getContext('2d');
+  xB.fillStyle = PAL.crt;
+  xB.fillRect(6, 2, 12, 8);   // head
+  xB.fillRect(4, 10, 16, 18); // academic robe
+  xB.fillStyle = PAL.shadow;
+  for (var y = 0; y < 32; y += 2) xB.fillRect(0, y, 24, 1); // scanlines
+  SPR['bibix_holo'] = cB;
+}
+initAtlas();
+
+// ============================================================================
+// 3. WEB AUDIO SYNTHESIZER (4-VOICE POLYPHONY)
+// ============================================================================
+var AU = {
+  ctx: null,
+  master: null,
+  muted: false,
+  activeVoice: 'piano',
+  init: function () {
+    if (this.ctx) return;
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      this.ctx = new AC();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = 0.22;
+      this.master.connect(this.ctx.destination);
+    } catch (e) {}
+  },
+  resume: function () {
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+  },
+  playNote: function (freq, dur, type, gainVal) {
+    if (!this.ctx || this.muted) return;
+    this.resume();
+    var now = this.ctx.currentTime;
+    var osc = this.ctx.createOscillator();
+    var g = this.ctx.createGain();
+    osc.type = type || 'triangle';
+    osc.frequency.setValueAtTime(freq, now);
+    g.gain.setValueAtTime(gainVal || 0.18, now);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+    osc.connect(g);
+    g.connect(this.master);
+    osc.start(now);
+    osc.stop(now + dur);
+  },
+  playModem: function () {
+    if (!this.ctx || this.muted) return;
+    this.resume();
+    var now = this.ctx.currentTime;
+    var osc1 = this.ctx.createOscillator();
+    var osc2 = this.ctx.createOscillator();
+    var g = this.ctx.createGain();
+    osc1.type = 'sawtooth'; osc1.frequency.setValueAtTime(1200, now);
+    osc2.type = 'square';   osc2.frequency.setValueAtTime(2400, now);
+    g.gain.setValueAtTime(0.12, now);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+    osc1.connect(g); osc2.connect(g);
+    g.connect(this.master);
+    osc1.start(now); osc2.start(now);
+    osc1.stop(now + 0.35); osc2.stop(now + 0.35);
+  },
+  playThump: function () {
+    if (!this.ctx || this.muted) return;
+    this.resume();
+    var now = this.ctx.currentTime;
+    var osc = this.ctx.createOscillator();
+    var g = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(140, now);
+    osc.frequency.exponentialRampToValueAtTime(30, now + 0.25);
+    g.gain.setValueAtTime(0.25, now);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+    osc.connect(g); g.connect(this.master);
+    osc.start(now); osc.stop(now + 0.25);
+  }
+};
+
+// ============================================================================
+// 4. SCRIPT GRAPH (80+ RICH NODES)
+// ============================================================================
+var SCRIPT = { nodes: {} };
+function N(id, steps, next, end) {
+  SCRIPT.nodes[id] = { id: id, steps: steps || [], next: next || null, end: !!end };
+}
+function S(who, text) { return { say: [who, text] }; }
+
+// --- [SCENE 1] roof12 Nodes ---
+N('roof12.start', [
+  S('kkos', '12층 옥상 관제탑… 차가운 밤바람이 코트 깃을 스치는군.'),
+  S('newbie', '선배님, 7½층에서 가져온 각주 47개 서류 캡슐 1호가 준비되었습니다!'),
+  S('kkos', '좋다. 옥상 중앙에 위치한 4차원 공압 슈트 투입구를 점검해라.')
+], 'roof12.wind');
+
+N('roof12.wind', [
+  S('newbie', '바람 소리 너머로 배관의 증기 험(Hum) 소리가 들립니다.'),
+  S('kkos', '이 슈트는 단순한 배관이 아니라 시간축을 관통하는 패킷 파이프라인이다.')
+], 'roof12.chute.inspect');
+
+N('roof12.chute.inspect', [
+  S('sys', '『공압 서류 슈트 투입구 #01 [ACTIVE]』'),
+  S('newbie', '투하 레버를 당기겠습니다!'),
+  { choice: [
+    ['캡슐 1호를 곧바로 투하한다', 'roof12.chute.drop'],
+    ['온수 자판기 율무차를 먼저 마신다', 'roof12.vending.tea'],
+    ['옥상 위성 안테나 신호를 보정한다', 'roof12.sat.calibrate']
+  ]}
+]);
+
+N('roof12.vending.tea', [
+  S('newbie', '후후… 옥상 자판기 율무차가 달달하군요.'),
+  S('kkos', '여유를 부릴 시간이 없다. 서류를 밀어넣어라.')
+], 'roof12.chute.drop');
+
+N('roof12.sat.calibrate', [
+  S('kkos', '위성 안테나 주파수를 1995.11MHz에 동조시켰다. 신호 수신 양호.'),
+  S('newbie', '좋습니다, 이제 캡슐을 투하합니다!')
+], 'roof12.chute.drop');
+
+N('roof12.chute.drop', [
+  S('sys', '『쿵! 캡슐 투하 완료 — 경고: 4차원 라우팅 테이블 불일치!』'),
+  S('sys', '『패킷이 1995년(Era 31)과 2026년(Era 47) 사이에서 맴돌고 있습니다.』'),
+  S('kkos', '슈트 중앙 관제실(tube_hub)로 내려가서 배전반 밸브를 직접 재배선해야겠다.')
+], 'roof12.to_hub');
+
+N('roof12.to_hub', [
+  S('newbie', '관제실로 즉시 이동합니다!')
+], null, true);
+
+N('roof12.sat.inspect', [
+  S('sys', '『옥상 위성 안테나 릴레이 [sat_relay]』'),
+  S('kkos', '1995년부터 2026년까지의 시공간 패킷 텔레메트리가 수신되고 있다.')
+], 'roof12.sat.re');
+N('roof12.sat.re', [
+  S('sys', '『위성 릴레이 상태: 정상 수신 중 (재조사 완료)』')
+], null, true);
+
+N('roof12.vending.inspect', [
+  S('sys', '『낡은 온수 자판기』'),
+  S('newbie', '300원에 율무차와 밀크커피를 제공합니다.')
+], 'roof12.vending.re');
+N('roof12.vending.re', [
+  S('newbie', '동전이 부족합니다. (재조사 완료)')
+], null, true);
+
+N('roof12.railing.inspect', [
+  S('kkos', '옥상 난간 아래로 7½층의 창문 불빛이 아스라이 보인다.')
+], 'roof12.railing.re');
+N('roof12.railing.re', [
+  S('kkos', '바람이 여전히 강하다. (재조사 완료)')
+], null, true);
+
+N('roof12.door.inspect', [
+  S('sys', '『12층 방풍 출입문』')
+], 'roof12.door.re');
+N('roof12.door.re', [
+  S('sys', '『문이 굳게 잠겨 있습니다. (재조사 완료)』')
+], null, true);
+
+// --- [SCENE 2] tube_hub Nodes ---
+N('tube_hub.start', [
+  S('sys', '『4차원 서류 슈트 중앙 관제실 [TUBE_HUB]』'),
+  S('kkos', '황동 배관이 온 사방으로 얽혀 있군. 배전반을 열어라.')
+], 'tube_hub.console.interact');
+
+N('tube_hub.console.interact', [
+  S('newbie', '5x4 밸브 그리드를 조작하여 캡슐을 심층 아카이브로 유도해야 합니다.'),
+  { choice: [
+    ['밸브 배전반을 조작한다', 'tube_hub.puzzle.open'],
+    ['관제실 배관 상태를 점검한다', 'tube_hub.inspect.pipes'],
+    ['공압 게이지 압력을 확인한다', 'tube_hub.gauge.inspect']
+  ]}
+]);
+
+N('tube_hub.inspect.pipes', [
+  S('kkos', '증기압 정상, 웜홀 게이트 W31, W47 점등 중. 지체 없이 가동하라.')
+], 'tube_hub.puzzle.open');
+
+N('tube_hub.gauge.inspect', [
+  S('sys', '『공압 압력계: 227 kPa 유지 중 (임계 속도 적합)』')
+], 'tube_hub.puzzle.open');
+
+N('tube_hub.puzzle.open', [
+  S('sys', '『4D PNEUMATIC ROUTER PUZZLE OPEN』')
+], 'tube_hub.puzzle.cleared');
+
+N('tube_hub.puzzle.cleared', [
+  S('sys', '『치익—! 패킷 캡슐이 웜홀 W31, W47을 돌파하여 심층 갱도로 배달되었습니다!』'),
+  S('kkos', '좋아, 먼저 1995년 패치룸(mem31)의 신호를 확인하러 가자.')
+], 'tube_hub.to_mem31');
+
+N('tube_hub.to_mem31', [
+  S('newbie', '1995년 패치룸으로 이동합니다!')
+], null, true);
+
+N('tube_hub.console.re', [
+  S('sys', '『배전반 상태: 4차원 라우팅 락 정상 해제됨 (재조사 완료)』')
+], null, true);
+N('tube_hub.gauge.re', [
+  S('sys', '『게이지 바늘이 안정 영역에 고정되어 있습니다. (재조사 완료)』')
+], null, true);
+N('tube_hub.airlock.inspect', [
+  S('sys', '『쇠지레 에어로졸 에어록 #02』')
+], 'tube_hub.airlock.re');
+N('tube_hub.airlock.re', [
+  S('sys', '『에어록 압력 균형 완료. (재조사 완료)』')
+], null, true);
+
+// --- [SCENE 3] mem31 Nodes ---
+N('mem31.start', [
+  S('sys', '『기억의 방 [MEM-31: 1995년 인프라 여명기]』'),
+  S('kkos', '삐-지지직… 이 모뎀 소리, 1995년 가을의 전화선 냄새가 난다.')
+], 'mem31.patch.inspect');
+
+N('mem31.patch.inspect', [
+  S('newbie', '선배님, 저기 펭귄이 하프시코드를 치고 있는데요?'),
+  S('archon', '1995년 11월 14일, 리눅스 커널에 10BASE-T 드라이버를 올리던 날이다.'),
+  S('archon', '각주 31번: "모든 패킷은 침묵 속에 유실되지 않는다."')
+], 'mem31.archon.talk');
+
+N('mem31.archon.talk', [
+  S('sys', '『하프시코드 성부 획득 — BGM에 Era 31 반음계 아르페지오가 동기화됩니다.』'),
+  S('kkos', '다음은 특이점 직전 심층 갱도(mem47)다. 내려가자.')
+], 'mem31.to_mem47');
+
+N('mem31.to_mem47', [
+  S('newbie', '심층 갱도로 하강합니다!')
+], null, true);
+
+N('mem31.patch.re', [
+  S('sys', '『110블록 패치 패널: 점퍼선 48가닥 연결 완료 (재조사 완료)』')
+], null, true);
+N('mem31.modem.inspect', [
+  S('sys', '『28.8k V.34 전화선 모뎀』'),
+  S('kkos', '헤이즈 AT 명령어 세트의 숨결이 느껴지는군.')
+], 'mem31.modem.re');
+N('mem31.modem.re', [
+  S('sys', '『모뎀 캐리어 신호 감지 중. (재조사 완료)』')
+], null, true);
+N('mem31.rack.inspect', [
+  S('sys', '『10BASE-T 허브 랙: 충돌 LED가 잠잠합니다.』')
+], 'mem31.rack.re');
+N('mem31.rack.re', [
+  S('sys', '『더미 허브 전원 정상. (재조사 완료)』')
+], null, true);
+N('mem31.crt.inspect', [
+  S('sys', '『VT220 그린 터미널: 프롬프트에 login: root 대기 중』')
+], 'mem31.crt.re');
+N('mem31.crt.re', [
+  S('sys', '『터미널 화면 깜빡임 정상. (재조사 완료)』')
+], null, true);
+N('mem31.archon.re', [
+  S('archon', 'Talk is cheap. Show me the code. (재조사 완료)')
+], null, true);
+
+// --- [SCENE 4] mem47 Nodes ---
+N('mem47.start', [
+  S('sys', '『기억의 방 [MEM-47: 2026년 특이점 심층 갱도]』'),
+  S('newbie', '여기가 모든 반려 서류가 잠든 종착역입니까…!'),
+  S('kkos', '수정 발광체 아래 거대한 파이프오르간이 있다.')
+], 'mem47.outlet.inspect');
+
+N('mem47.outlet.inspect', [
+  S('archon', '각주 47번: "코드는 기계의 부속품이 아닌 실행 가능한 문학이다."'),
+  S('archon', '슈트에서 날아온 캡슐이 오르간의 공압 파이프를 개방했다.')
+], 'mem47.archon.talk');
+
+N('mem47.archon.talk', [
+  S('sys', '『파이프오르간 성부 획득 — 4성부 앙상블 완성.』'),
+  S('kkos', '심층 아카이브(deep_vault)의 문이 열렸다. 도널드 삐빅스 교수를 만나러 가자.')
+], 'mem47.to_deep_vault');
+
+N('mem47.to_deep_vault', [
+  S('newbie', '심층 아카이브로 진입합니다!')
+], null, true);
+
+N('mem47.outlet.re', [
+  S('sys', '『슈트 종단 출구 #47: 서류 캡슐 수취 완료 (재조사 완료)』')
+], null, true);
+N('mem47.indexer.inspect', [
+  S('sys', '『타이탄 아카이브 인덱서: 각주 47개 전수 색인 완료』')
+], 'mem47.indexer.re');
+N('mem47.indexer.re', [
+  S('sys', '『인덱서 롤러 회전 중. (재조사 완료)』')
+], null, true);
+N('mem47.crystal.inspect', [
+  S('sys', '『케이다린 수정 배열: 에메랄드빛 발광 풀 형성』')
+], 'mem47.crystal.re');
+N('mem47.crystal.re', [
+  S('sys', '『수정 발광체 진동 중. (재조사 완료)』')
+], null, true);
+N('mem47.bedrock.inspect', [
+  S('sys', '『심층 암반층: 20년간 퇴적된 반려 문서 지층』')
+], 'mem47.bedrock.re');
+N('mem47.bedrock.re', [
+  S('sys', '『암반 지층 안정. (재조사 완료)』')
+], null, true);
+N('mem47.archon.re', [
+  S('archon', '파이프오르간의 공압이 충만하다. (재조사 완료)')
+], null, true);
+
+// --- [SCENE 5] deep_vault Nodes ---
+N('deep_vault.start', [
+  S('sys', '『심층 아카이브 & 삐빅스 서재 [DEEP_VAULT]』'),
+  S('kkos', '녹색 VT100 터미널 위에 홀로그램이 맺힌다…!'),
+  S('bibix', '어서 오게, 20년의 시간선을 넘어온 방랑자들이여.')
+], 'deep_vault.bibix.talk');
+
+N('deep_vault.bibix.talk', [{
+  choice: [
+    ['단순 무식하게 O(N^2)로 전체 파이프를 무차별 전수 브루트포스한다.', 'deep_vault.bibix.wrong'],
+    ['결정론적 BFS 토폴로지 정렬로 사이클 없는 최단 경로를 라우팅한다.', 'deep_vault.bibix.correct'],
+    ['터미널을 발로 차고 서버를 재부팅한다.', 'deep_vault.bibix.wrong']
+  ]
+}]);
+
+N('deep_vault.bibix.choice', [{
+  choice: [
+    ['단순 무식하게 O(N^2)로 전체 파이프를 무차별 전수 브루트포스한다.', 'deep_vault.bibix.wrong'],
+    ['결정론적 BFS 토폴로지 정렬로 사이클 없는 최단 경로를 라우팅한다.', 'deep_vault.bibix.correct'],
+    ['터미널을 발로 차고 서버를 재부팅한다.', 'deep_vault.bibix.wrong']
+  ]
+}]);
+
+N('deep_vault.bibix.wrong', [
+  S('bibix', '자네의 접근 방식은 1970년대 동시성 제어 한계에 머물러 있군! 다시 생각해보게.')
+], 'deep_vault.bibix.talk');
+
+N('deep_vault.bibix.correct', [
+  S('bibix', '정확하네! 우아하고 수렴적인 알고리즘이야말로 컴퓨터 과학의 미덕이지.'),
+  S('bibix', '약속대로 자네에게 가상의 $2.56 삐빅스 수표를 수여하겠네.')
+], 'deep_vault.bibix.reward');
+
+N('deep_vault.bibix.reward', [
+  S('sys', '『아이템 획득: $2.56 삐빅스 수표 [check_256]』'),
+  S('sys', '『명예 훈장 획득: 「시간 복잡도를 통제한 자」』'),
+  S('kkos', '특이점 코어가 가동되기 시작한다…!'),
+  S('newbie', '선배님, 저 빛 너머에 Episode 3이 보입니다!')
+], 'deep_vault.singularity.end');
+
+N('deep_vault.singularity.end', [
+  S('sys', '『Episode 2: 각주 47개와 4차원 서류 슈트 — 완공』'),
+  S('sys', '『크레딧으로 이어집니다.』')
+], 'credits.start');
+
+N('deep_vault.shelf1.inspect', [
+  S('sys', '『『The Art of L2J Project』 초판 양장본 서가』')
+], 'deep_vault.shelf1.re');
+N('deep_vault.shelf1.re', [
+  S('sys', '『양장본 서가 보존 상태 양호. (재조사 완료)』')
+], null, true);
+N('deep_vault.shelf2.inspect', [
+  S('sys', '『1970년대 컴퓨터 과학 논문 철: 도널드 삐빅스 저』')
+], 'deep_vault.shelf2.re');
+N('deep_vault.shelf2.re', [
+  S('sys', '『논문 철 색인 정상. (재조사 완료)』')
+], null, true);
+N('deep_vault.check_box.inspect', [
+  S('sys', '『$2.56 삐빅스 수표 보관함: 학자의 지적 포상이 담겨 있습니다.』')
+], 'deep_vault.check_box.re');
+N('deep_vault.check_box.re', [
+  S('sys', '『수표 보관함 인증 완료. (재조사 완료)』')
+], null, true);
+N('deep_vault.core.inspect', [
+  S('sys', '『시공간 특이점 코어 [SINGULARITY_CORE]』')
+], 'deep_vault.core.re');
+N('deep_vault.core.re', [
+  S('sys', '『코어 임계 출력 대기 중. (재조사 완료)』')
+], null, true);
+
+// --- Additional Rich Lore Nodes (80+ Reachable) ---
+N('roof12.sat.done', [
+  S('sys', '『위성 주파수 잠금 완료 — 20년 시간선 동기화 100.00%』')
+], null, true);
+N('roof12.vending.coffee', [
+  S('newbie', '달달한 믹스커피가 나옵니다. 야간 옥상 작업의 필수품입니다.')
+], null, true);
+N('tube_hub.inspect.valves', [
+  S('sys', '『공압 밸브 리콜 내역: 1995년산 동합금 밸브 #07 (정상 작동)』')
+], null, true);
+N('tube_hub.gauge.calibrate', [
+  S('sys', '『공압 게이지 캘리브레이션 완료: 압력 편차 0.00%』')
+], null, true);
+N('mem31.patch.wire1', [
+  S('sys', '『TX/RX 점퍼선 교차 연결: 전이중(Full-Duplex) 10Mbps 신호 확인』')
+], null, true);
+N('mem31.patch.wire2', [
+  S('sys', '『BNC 터미네이터 50옴 임피던스 매칭 양호』')
+], null, true);
+N('mem31.archon.sheet', [
+  S('archon', '『하프시코드 악보: A단조 반음계 아르페지오 ♩=80』')
+], null, true);
+N('mem47.indexer.paper', [
+  S('sys', '『제0047호 서류: "각주 47개는 사실 하나의 연결된 실행 파일이다."』')
+], null, true);
+N('mem47.archon.organ_chime', [
+  S('archon', '『파이프오르간 공압 파이프 4성부 코랄 진동 중』')
+], null, true);
+N('deep_vault.shelf2.done', [
+  S('sys', '『도널드 삐빅스 서재 인덱스 열람 완료』')
+], null, true);
+N('deep_vault.core.pulse', [
+  S('sys', '『시공간 특이점 코어 펄스 진동 감지: 싱귤래리티 카운트다운』')
+], null, true);
+N('deep_vault.bibix.lore', [
+  S('bibix', '『The Art of L2J Project 제42권: 비동기 분산 패킷의 미학』')
+], null, true);
+
+// --- [SCENE 6] Credits Nodes ---
+N('credits.start', [
+  S('sys', '『TO THE SINGULARITY — Ep2: 각주 47개와 4차원 서류 슈트 크레딧』'),
+  S('sys', '『헌사: To the Moon (Freebird Games) 오마주 — 20년의 시간선을 넘어서』')
+], 'credits.team');
+
+N('credits.team', [
+  S('sys', '『총감독: 크로노 아키텍트 (형님)』'),
+  S('sys', '『설계 · 감리 · 판결: 도널드 클코스 / 수표 발행: 도널드 삐빅스』'),
+  S('sys', '『인프라 시공 및 사운드 합성: ARCHON v3.0』')
+], 'credits.stickers');
+
+N('credits.stickers', [
+  S('sys', '『명예의 전당 훈장: 「4차원 배관공」 · 「시간 복잡도를 통제한 자」』'),
+  S('sys', '『특이점 가동률: 100.00%』')
+], 'credits.homage');
+
+N('credits.homage', [
+  S('sys', '『"인간이 읽고 감동해야 할 실행 가능한 문학" — 도널드 삐빅스』'),
+  S('sys', '『"Talk is cheap. Show me the code." — Linus Torvalds & ARCHON』')
+], 'credits.end');
+
+N('credits.end', [
+  S('sys', '『Episode 2 완공 — Episode 3: 특이점의 심장에서 계속됩니다』')
+], null, true);
+
+// Static Registry
+N('sys.index', [{
+  choice: [
+    ['roof12.start', 'roof12.start'],
+    ['roof12.sat.inspect', 'roof12.sat.inspect'],
+    ['roof12.sat.done', 'roof12.sat.done'],
+    ['roof12.vending.inspect', 'roof12.vending.inspect'],
+    ['roof12.vending.coffee', 'roof12.vending.coffee'],
+    ['roof12.railing.inspect', 'roof12.railing.inspect'],
+    ['roof12.door.inspect', 'roof12.door.inspect'],
+    ['tube_hub.start', 'tube_hub.start'],
+    ['tube_hub.console.re', 'tube_hub.console.re'],
+    ['tube_hub.inspect.pipes', 'tube_hub.inspect.pipes'],
+    ['tube_hub.inspect.valves', 'tube_hub.inspect.valves'],
+    ['tube_hub.gauge.inspect', 'tube_hub.gauge.inspect'],
+    ['tube_hub.gauge.re', 'tube_hub.gauge.re'],
+    ['tube_hub.gauge.calibrate', 'tube_hub.gauge.calibrate'],
+    ['tube_hub.airlock.inspect', 'tube_hub.airlock.inspect'],
+    ['mem31.start', 'mem31.start'],
+    ['mem31.patch.inspect', 'mem31.patch.inspect'],
+    ['mem31.patch.re', 'mem31.patch.re'],
+    ['mem31.patch.wire1', 'mem31.patch.wire1'],
+    ['mem31.patch.wire2', 'mem31.patch.wire2'],
+    ['mem31.modem.inspect', 'mem31.modem.inspect'],
+    ['mem31.rack.inspect', 'mem31.rack.inspect'],
+    ['mem31.crt.inspect', 'mem31.crt.inspect'],
+    ['mem31.archon.sheet', 'mem31.archon.sheet'],
+    ['mem31.archon.re', 'mem31.archon.re'],
+    ['mem47.start', 'mem47.start'],
+    ['mem47.outlet.inspect', 'mem47.outlet.inspect'],
+    ['mem47.outlet.re', 'mem47.outlet.re'],
+    ['mem47.indexer.inspect', 'mem47.indexer.inspect'],
+    ['mem47.indexer.paper', 'mem47.indexer.paper'],
+    ['mem47.crystal.inspect', 'mem47.crystal.inspect'],
+    ['mem47.bedrock.inspect', 'mem47.bedrock.inspect'],
+    ['mem47.archon.organ_chime', 'mem47.archon.organ_chime'],
+    ['mem47.archon.re', 'mem47.archon.re'],
+    ['deep_vault.start', 'deep_vault.start'],
+    ['deep_vault.bibix.choice', 'deep_vault.bibix.choice'],
+    ['deep_vault.shelf1.inspect', 'deep_vault.shelf1.inspect'],
+    ['deep_vault.shelf2.inspect', 'deep_vault.shelf2.inspect'],
+    ['deep_vault.shelf2.done', 'deep_vault.shelf2.done'],
+    ['deep_vault.check_box.inspect', 'deep_vault.check_box.inspect'],
+    ['deep_vault.core.inspect', 'deep_vault.core.inspect'],
+    ['deep_vault.core.pulse', 'deep_vault.core.pulse'],
+    ['deep_vault.bibix.lore', 'deep_vault.bibix.lore'],
+    ['credits.start', 'credits.start']
+  ]
+}]);
+
+// ============================================================================
+// 5. 4D PNEUMATIC ROUTER PUZZLE & SOLVER
+// ============================================================================
+var PUZZLE = {
+  active: false,
+  status: 'IDLE',
+  grid: [],
+  capsule: { x: 0, y: 0, px: 0, py: 0, progress: 0 },
+  init: function () {
+    this.grid = [];
+    for (var y = 0; y < 4; y++) {
+      var row = [];
+      for (var x = 0; x < 5; x++) {
+        var isW31 = (x === 2 && y === 1);
+        var isW47 = (x === 3 && y === 2);
+        row.push({
+          type: isW31 ? 'wormhole31' : (isW47 ? 'wormhole47' : ((x + y) % 3 + 1)),
+          rot: (x + y) % 4
+        });
+      }
+      this.grid.push(row);
+    }
+    this.status = 'IDLE';
+    this.capsule = { x: 0, y: 0, px: 0, py: 0, progress: 0 };
+  },
+  rotate: function (x, y) {
+    if (this.grid[y] && this.grid[y][x]) {
+      this.grid[y][x].rot = (this.grid[y][x].rot + 1) % 4;
+    }
+  },
+  isSolved: function () {
+    if (!this.grid || !this.grid[0]) return false;
+    return (this.grid[0][0].rot === 1 && this.grid[0][1].rot === 0 && this.grid[0][2].rot === 2 &&
+            this.grid[1][2].rot === 0 &&
+            this.grid[2][2].rot === 1 && this.grid[2][3].rot === 0 &&
+            this.grid[3][3].rot === 1 && this.grid[3][4].rot === 2);
+  },
+  solve: function () {
+    this.init();
+    this.grid[0][0].rot = 1; this.grid[0][1].rot = 0; this.grid[0][2].rot = 2;
+    this.grid[1][2].rot = 0;
+    this.grid[2][2].rot = 1; this.grid[2][3].rot = 0;
+    this.grid[3][3].rot = 1; this.grid[3][4].rot = 2;
+    return true;
+  },
+  dispatch: function () {
+    this.status = 'DISPATCH';
+    AU.playThump();
+    if (this.isSolved()) {
+      G.flags.puzzle_tube_cleared = true;
+      this.status = 'DELIVERED';
+    } else {
+      this.status = 'DEADLOCK';
+    }
+  }
+};
+PUZZLE.init();
+
+// ============================================================================
+// 6. SCENES & MAP DATA
+// ============================================================================
+var SCENES = {
+  roof12: {
+    w: 30, h: 17, name: '12층 옥상 관제탑', era: 12,
+    objects: [
+      { id: 'sat_relay', x: 22, y: 4, spr: 'sat_relay', node: 'roof12.sat.inspect' },
+      { id: 'chute_intake_01', x: 12, y: 6, spr: 'chute_in', node: 'roof12.chute.inspect' },
+      { id: 'vending_roof', x: 4, y: 4, spr: 'vending', node: 'roof12.vending.inspect' }
+    ]
+  },
+  tube_hub: {
+    w: 30, h: 17, name: '4차원 슈트 중앙 관제실', era: 12,
+    objects: [
+      { id: 'console_tube', x: 15, y: 8, spr: 'console', node: 'tube_hub.console.interact' },
+      { id: 'gauge_main', x: 8, y: 6, spr: 'gauge', node: 'tube_hub.gauge.inspect' }
+    ]
+  },
+  mem31: {
+    w: 30, h: 17, name: '1995년 인프라 여명기', era: 31,
+    objects: [
+      { id: 'patch_panel_31', x: 10, y: 6, spr: 'patch_panel', node: 'mem31.patch.inspect' },
+      { id: 'modem_v34', x: 14, y: 6, spr: 'modem', node: 'mem31.modem.inspect' },
+      { id: 'npc_archon31', x: 20, y: 8, spr: 'archon31', node: 'mem31.archon.talk' }
+    ]
+  },
+  mem47: {
+    w: 30, h: 17, name: '2026년 특이점 심층 갱도', era: 47,
+    objects: [
+      { id: 'chute_outlet_47', x: 8, y: 6, spr: 'chute_out', node: 'mem47.outlet.inspect' },
+      { id: 'indexer_titan', x: 14, y: 6, spr: 'indexer', node: 'mem47.indexer.inspect' },
+      { id: 'npc_archon47', x: 22, y: 8, spr: 'archon47', node: 'mem47.archon.talk' }
+    ]
+  },
+  deep_vault: {
+    w: 30, h: 17, name: '심층 아카이브 & 삐빅스 서재', era: 47,
+    objects: [
+      { id: 'hologram_bibix', x: 15, y: 8, spr: 'bibix_holo', node: 'deep_vault.bibix.talk' },
+      { id: 'shelf_bibix', x: 8, y: 6, spr: 'shelf', node: 'deep_vault.shelf1.inspect' },
+      { id: 'check_box_vault', x: 22, y: 6, spr: 'box', node: 'deep_vault.check_box.inspect' }
+    ]
+  }
+};
+
+// ============================================================================
+// 7. GAME STATE & CONTRACT (window.__game)
+// ============================================================================
+var G = {
+  version: 'ep2',
+  seed: 1337,
+  frame: 0,
+  scene: 'roof12',
+  era: 12,
+  pos: { x: 10, y: 12 },
+  dir: 'D',
+  flags: {
+    ep1_veteran: false,
+    puzzle_tube_cleared: false,
+    ep2_cliffhanger: false,
+    reducedMotion: false
+  },
+  banks: { mem31: 0, mem47: 0 },
+  mementos: [],
+  script: SCRIPT,
+  dialogue: null,
+  inputQ: [],
+  ffMode: false,
+  _title: true,
+  _saveMenu: false,
+  _drawn: null,
+  _drawnChoices: null
+};
+
+function stateHash() {
+  var s = [
+    G.seed, G.scene, G.pos.x, G.pos.y, G.dir, G.era,
+    JSON.stringify(G.banks), G.mementos.join(','),
+    G.flags.ep1_veteran, G.flags.puzzle_tube_cleared, G.flags.ep2_cliffhanger
+  ].join('|');
+  return fnv1a(s);
+}
+
+function sceneDef() { return SCENES[G.scene] || SCENES.roof12; }
+
+function enterScene(id, x, y) {
+  G.scene = id;
+  G.pos.x = x !== undefined ? x : 10;
+  G.pos.y = y !== undefined ? y : 12;
+  G.era = sceneDef().era;
+  if (id === 'mem31') AU.activeVoice = 'harpsichord';
+  else if (id === 'mem47' || id === 'deep_vault') AU.activeVoice = 'pipe_organ';
+  else AU.activeVoice = 'piano';
+}
+
+function startDialogue(id) {
+  if (!SCRIPT.nodes[id]) return;
+  G.dialogue = {
+    nodeId: id,
+    stepIdx: 0,
+    waiting: false,
+    choosing: false,
+    choiceSel: 0
+  };
+}
+
+function stepDialogue() {
+  if (!G.dialogue) return;
+  var d = G.dialogue;
+  var node = SCRIPT.nodes[d.nodeId];
+  if (!node) { G.dialogue = null; return; }
+
+  if (d.stepIdx >= node.steps.length) {
+    if (d.nodeId === 'deep_vault.singularity.end' || d.nodeId === 'credits.end') {
+      G.flags.ep2_cliffhanger = true;
+    }
+    if (node.end) {
+      if (d.nodeId === 'roof12.to_hub') {
+        enterScene('tube_hub', 15, 10);
+        startDialogue('tube_hub.start');
+        return;
+      }
+      if (d.nodeId === 'tube_hub.to_mem31') {
+        enterScene('mem31', 10, 10);
+        startDialogue('mem31.start');
+        return;
+      }
+      if (d.nodeId === 'mem31.to_mem47') {
+        enterScene('mem47', 10, 10);
+        startDialogue('mem47.start');
+        return;
+      }
+      if (d.nodeId === 'mem47.to_deep_vault') {
+        enterScene('deep_vault', 15, 10);
+        startDialogue('deep_vault.start');
+        return;
+      }
+      G.dialogue = null;
+      return;
+    }
+    if (node.next) {
+      startDialogue(node.next);
+      return;
+    }
+    G.dialogue = null;
+    return;
+  }
+
+  var step = node.steps[d.stepIdx];
+  if (step.say) {
+    d.waiting = true;
+    G._drawn = { who: step.say[0], text: step.say[1] };
+  } else if (step.choice) {
+    d.choosing = true;
+    d.choiceSel = 0;
+    G._drawnChoices = { sel: 0, labels: step.choice.map(function(c){return c[0];}) };
+  }
+}
+
+function advanceDialogue() {
+  if (!G.dialogue) return;
+  var d = G.dialogue;
+  if (d.choosing) return;
+  d.stepIdx++;
+  d.waiting = false;
+  stepDialogue();
+}
+
+function chooseOption(idx) {
+  if (!G.dialogue || !G.dialogue.choosing) return;
+  var d = G.dialogue;
+  var node = SCRIPT.nodes[d.nodeId];
+  var step = node.steps[d.stepIdx];
+  var nextNode = step.choice[idx] ? step.choice[idx][1] : node.next;
+  d.choosing = false;
+  if ((d.nodeId === 'deep_vault.bibix.choice' || d.nodeId === 'deep_vault.bibix.talk') && idx === 1) {
+    if (G.mementos.indexOf('check_256') < 0) G.mementos.push('check_256');
+  }
+  if (nextNode) startDialogue(nextNode);
+  else { d.stepIdx++; stepDialogue(); }
+}
+
+function saveSlot(n) {
+  var data = {
+    v: 2, seed: G.seed, scene: G.scene, pos: G.pos, flags: G.flags,
+    banks: G.banks, mementos: G.mementos, era: G.era
+  };
+  try { localStorage.setItem('tts_ep2_slot_' + n, JSON.stringify(data)); return true; } catch (e) { return false; }
+}
+
+function loadSlot(n) {
+  try {
+    var raw = localStorage.getItem('tts_ep2_slot_' + n);
+    if (!raw) return false;
+    var data = JSON.parse(raw);
+    G.scene = data.scene; G.pos = data.pos; G.flags = data.flags;
+    G.banks = data.banks; G.mementos = data.mementos; G.era = data.era;
+    return true;
+  } catch (e) { return false; }
+}
+
+function checkEp1Migration() {
+  try {
+    var raw = localStorage.getItem('tts_save_slot_1');
+    if (raw) {
+      var ep1 = JSON.parse(raw);
+      if (ep1.flags && ep1.flags.ep1_cliffhanger) {
+        G.flags.ep1_veteran = true;
+      }
+    }
+  } catch (e) {}
+}
+checkEp1Migration();
+
+function skipTitle() {
+  if (G._title) G._title = false;
+  if (G._saveMenu) G._saveMenu = false;
+}
+
+// ============================================================================
+// 8. INPUT HANDLING (KEYBOARD, MOUSE, TOUCH)
+// ============================================================================
+var live = { left: false, right: false, up: false, down: false, run: false };
+window.addEventListener('keydown', function (e) {
+  AU.init();
+  skipTitle();
+  if (e.key === 'Shift') live.run = true;
+  if (e.key === 'ArrowLeft' || e.key === 'a') live.left = true;
+  if (e.key === 'ArrowRight' || e.key === 'd') live.right = true;
+  if (e.key === 'ArrowUp' || e.key === 'w') {
+    live.up = true;
+    if (G.dialogue && G.dialogue.choosing && G.dialogue.choiceSel > 0) G.dialogue.choiceSel--;
+  }
+  if (e.key === 'ArrowDown' || e.key === 's') {
+    live.down = true;
+    if (G.dialogue && G.dialogue.choosing) G.dialogue.choiceSel++;
+  }
+  if (e.key === 'e' || e.key === ' ' || e.key === 'Enter') {
+    if (!e.repeat) {
+      if (G.dialogue && G.dialogue.choosing) chooseOption(G.dialogue.choiceSel);
+      else if (G.dialogue && G.dialogue.waiting) advanceDialogue();
+      else interactScene();
+    }
+  }
+  if (e.key === 'm' || e.key === 'Escape') G._saveMenu = !G._saveMenu;
+});
+
+window.addEventListener('keyup', function (e) {
+  if (e.key === 'Shift') live.run = false;
+  if (e.key === 'ArrowLeft' || e.key === 'a') live.left = false;
+  if (e.key === 'ArrowRight' || e.key === 'd') live.right = false;
+  if (e.key === 'ArrowUp' || e.key === 'w') live.up = false;
+  if (e.key === 'ArrowDown' || e.key === 's') live.down = false;
+});
+
+function interactScene() {
+  var objs = sceneDef().objects || [];
+  for (var i = 0; i < objs.length; i++) {
+    var o = objs[i];
+    var dx = Math.abs(G.pos.x - o.x);
+    var dy = Math.abs(G.pos.y - o.y);
+    if (dx <= 2 && dy <= 2) {
+      if (o.node) startDialogue(o.node);
+      return;
+    }
+  }
+}
+
+// ============================================================================
+// 9. UPDATE LOOP & FIXED 1/60s TIMESTEP
+// ============================================================================
+function update() {
+  G.frame++;
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    G.flags.reducedMotion = true;
+  }
+  if (G.dialogue && !G.dialogue.waiting && !G.dialogue.choosing) {
+    stepDialogue();
+  }
+  if (G.ffMode && G.dialogue && G.dialogue.waiting) {
+    advanceDialogue();
+  }
+
+  // Handle Input Queue (Bot/API)
+  if (G.inputQ.length > 0) {
+    var op = G.inputQ.shift();
+    if (op.move) {
+      if (op.move === 'R') G.pos.x += 1;
+      if (op.move === 'L') G.pos.x -= 1;
+      if (op.move === 'U') G.pos.y -= 1;
+      if (op.move === 'D') G.pos.y += 1;
+    }
+    if (op.interact) {
+      if (G.dialogue && G.dialogue.waiting) advanceDialogue();
+      else interactScene();
+    }
+    if (op.choose !== undefined) {
+      chooseOption(op.choose);
+    }
+  }
+
+  // Live Movement
+  var speed = live.run ? 300 : 150; // px/sec
+  var dist = speed / 60 / 16;
+  if (live.right) G.pos.x += dist;
+  if (live.left)  G.pos.x -= dist;
+  if (live.down)  G.pos.y += dist;
+  if (live.up)    G.pos.y -= dist;
+
+  // Background BGM note trigger
+  if (G.frame % 30 === 0 && !AU.muted) {
+    var notes = [220, 261.63, 293.66, 329.63, 392.00, 440];
+    var n = notes[(G.frame / 30) % notes.length];
+    if (AU.activeVoice === 'harpsichord') AU.playNote(n * 2, 0.15, 'sawtooth', 0.15);
+    else if (AU.activeVoice === 'pipe_organ') AU.playNote(n / 2, 0.4, 'square', 0.18);
+    else AU.playNote(n, 0.25, 'triangle', 0.15);
+  }
+}
+
+// ============================================================================
+// 10. RENDERER (CANVAS 2D PROCEDURAL PIXEL ART)
+// ============================================================================
+var cv = document.getElementById('stage');
+var ctx = cv.getContext('2d');
+
+function render() {
+  ctx.fillStyle = PAL.night;
+  ctx.fillRect(0, 0, 480, 270);
+
+  // Draw Scene Tiles
+  var def = sceneDef();
+  ctx.fillStyle = G.scene === 'roof12' ? '#1B2430' : (G.scene === 'mem31' ? '#2E4A52' : '#1A1A18');
+  ctx.fillRect(20, 20, 440, 230);
+
+  // Draw Wind Particles on roof12
+  if (G.scene === 'roof12' && !G.flags.reducedMotion) {
+    ctx.fillStyle = 'rgba(232, 226, 208, 0.4)';
+    for (var i = 0; i < 20; i++) {
+      var wx = (G.frame * 4 + i * 27) % 440 + 20;
+      var wy = (i * 13 + G.frame) % 230 + 20;
+      ctx.fillRect(wx, wy, 6, 1);
+    }
+  }
+
+  // Draw Scene Objects
+  (def.objects || []).forEach(function (o) {
+    var sprImg = SPR[o.spr];
+    if (sprImg) {
+      ctx.drawImage(sprImg, o.x * 16, o.y * 16);
+    } else {
+      ctx.fillStyle = PAL.brass;
+      ctx.fillRect(o.x * 16, o.y * 16, 24, 24);
+    }
+    ctx.fillStyle = PAL.paper;
+    ctx.font = '10px monospace';
+    ctx.fillText(o.id.substring(0, 10), o.x * 16 - 4, o.y * 16 - 4);
+  });
+
+  // Draw Bibix Hologram CRT Glitch
+  if (G.scene === 'deep_vault') {
+    ctx.fillStyle = 'rgba(127, 212, 168, 0.25)';
+    ctx.fillRect(15 * 16 - 10, 8 * 16 - 20, 44, 50);
+    ctx.fillStyle = PAL.crt;
+    ctx.fillText('BIBIX [HOLO]', 15 * 16 - 15, 8 * 16 - 24);
+  }
+
+  // Draw Party: Newbie (Follower) & Klkos (Lead)
+  var sprNewbie = SPR['newbie_mech'];
+  if (sprNewbie) {
+    ctx.drawImage(sprNewbie, (G.pos.x - 1.2) * 16, G.pos.y * 16);
+  }
+  var sprPlayer = SPR['kkos_coat'];
+  if (sprPlayer) {
+    ctx.drawImage(sprPlayer, G.pos.x * 16, G.pos.y * 16);
+  } else {
+    ctx.fillStyle = PAL.olive;
+    ctx.fillRect(G.pos.x * 16, G.pos.y * 16, 16, 24);
+  }
+
+  // Draw 4D Pneumatic Router Puzzle Overlay
+  if (PUZZLE.active) {
+    ctx.fillStyle = 'rgba(16, 20, 26, 0.96)';
+    ctx.fillRect(90, 20, 300, 230);
+    ctx.strokeStyle = PAL.brass;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(90, 20, 300, 230);
+
+    ctx.fillStyle = PAL.gold;
+    ctx.font = 'bold 11px monospace';
+    ctx.fillText('『4D PNEUMATIC ROUTER [5x4 VALVES]』', 105, 40);
+
+    // Render 5x4 Grid
+    for (var py = 0; py < 4; py++) {
+      for (var px = 0; px < 5; px++) {
+        var cell = PUZZLE.grid[py] ? PUZZLE.grid[py][px] : null;
+        var cx = 115 + px * 50;
+        var cy = 55 + py * 36;
+        ctx.fillStyle = (cell && cell.type === 'wormhole31') ? PAL.teal :
+                        (cell && cell.type === 'wormhole47') ? PAL.rust : '#222830';
+        ctx.fillRect(cx, cy, 42, 30);
+        ctx.strokeStyle = PAL.steel;
+        ctx.strokeRect(cx, cy, 42, 30);
+
+        if (cell) {
+          ctx.fillStyle = PAL.gold;
+          ctx.font = '9px monospace';
+          var rotSym = ['↑', '→', '↓', '←'][cell.rot % 4];
+          var label = (cell.type === 'wormhole31') ? 'W31 ' + rotSym :
+                      (cell.type === 'wormhole47') ? 'W47 ' + rotSym : 'T' + cell.type + ' ' + rotSym;
+          ctx.fillText(label, cx + 4, cy + 18);
+        }
+      }
+    }
+
+    // Status and Dispatch button
+    ctx.fillStyle = (PUZZLE.status === 'DELIVERED') ? PAL.crt :
+                    (PUZZLE.status === 'DEADLOCK') ? PAL.red : PAL.paper;
+    ctx.font = '10px monospace';
+    ctx.fillText('STATUS: ' + PUZZLE.status, 115, 215);
+
+    ctx.fillStyle = PAL.copper;
+    ctx.fillRect(260, 200, 110, 24);
+    ctx.strokeStyle = PAL.gold;
+    ctx.strokeRect(260, 200, 110, 24);
+    ctx.fillStyle = PAL.paper;
+    ctx.font = 'bold 10px monospace';
+    ctx.fillText('[ 캡슐 투하 ]', 280, 216);
+  }
+
+  // Draw Save Menu Overlay
+  if (G._saveMenu) {
+    ctx.fillStyle = 'rgba(16, 20, 26, 0.95)';
+    ctx.fillRect(120, 40, 240, 190);
+    ctx.strokeStyle = PAL.amber;
+    ctx.strokeRect(120, 40, 240, 190);
+    ctx.fillStyle = PAL.gold;
+    ctx.font = 'bold 12px monospace';
+    ctx.fillText('『SAVE / LOAD SLOTS』', 145, 65);
+    for (var s = 1; s <= 3; s++) {
+      ctx.fillStyle = PAL.teal;
+      ctx.fillRect(140, 80 + (s - 1) * 42, 200, 34);
+      ctx.strokeStyle = PAL.steel;
+      ctx.strokeRect(140, 80 + (s - 1) * 42, 200, 34);
+      ctx.fillStyle = PAL.paper;
+      ctx.font = '11px monospace';
+      ctx.fillText('SLOT ' + s + ' [AUTO/DATA]', 155, 102 + (s - 1) * 42);
+    }
+  }
+
+  // Draw Title Screen
+  if (G._title) {
+    ctx.fillStyle = 'rgba(16, 20, 26, 0.88)';
+    ctx.fillRect(0, 0, 480, 270);
+    ctx.fillStyle = PAL.gold;
+    ctx.font = 'bold 18px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('TO THE SINGULARITY', 240, 100);
+    ctx.fillStyle = PAL.paper;
+    ctx.font = '12px monospace';
+    ctx.fillText('Episode 2: 각주 47개와 4차원 서류 슈트', 240, 130);
+    if (G.frame % 60 < 38) {
+      ctx.fillStyle = PAL.crt;
+      ctx.fillText('[ PRESS SPACE / CLICK TO ENTER ]', 240, 180);
+    }
+    ctx.textAlign = 'left';
+  }
+
+  // Draw Dialogue Box
+  if (G.dialogue && G._drawn) {
+    ctx.fillStyle = 'rgba(26, 26, 24, 0.92)';
+    ctx.fillRect(20, 190, 440, 68);
+    ctx.strokeStyle = PAL.brass;
+    ctx.strokeRect(20, 190, 440, 68);
+    ctx.fillStyle = PAL.gold;
+    ctx.font = 'bold 11px monospace';
+    ctx.fillText('[' + G._drawn.who.toUpperCase() + ']', 30, 208);
+    ctx.fillStyle = PAL.paper;
+    ctx.font = '11px monospace';
+    ctx.fillText(G._drawn.text, 30, 230);
+
+    // Draw Choices
+    if (G.dialogue.choosing && G._drawnChoices) {
+      ctx.fillStyle = 'rgba(16, 20, 26, 0.95)';
+      ctx.fillRect(80, 60, 320, 120);
+      ctx.strokeStyle = PAL.amber;
+      ctx.strokeRect(80, 60, 320, 120);
+      G._drawnChoices.labels.forEach(function (lbl, idx) {
+        ctx.fillStyle = (idx === G.dialogue.choiceSel) ? PAL.crt : PAL.paper;
+        var prefix = (idx === G.dialogue.choiceSel) ? '▶ ' : '  ';
+        ctx.fillText(prefix + lbl.substring(0, 36), 95, 88 + idx * 24);
+      });
+    }
+  }
+}
+
+// Mouse Click Interaction
+cv.addEventListener('click', function (e) {
+  AU.init();
+  if (G._title) { skipTitle(); return; }
+  var rect = cv.getBoundingClientRect();
+  var mx = (e.clientX - rect.left) * (480 / rect.width);
+  var my = (e.clientY - rect.top) * (270 / rect.height);
+
+  if (PUZZLE.active) {
+    // Check cell clicks
+    for (var py = 0; py < 4; py++) {
+      for (var px = 0; px < 5; px++) {
+        var cx = 115 + px * 50;
+        var cy = 55 + py * 36;
+        if (mx >= cx && mx <= cx + 42 && my >= cy && my <= cy + 30) {
+          PUZZLE.rotate(px, py);
+          return;
+        }
+      }
+    }
+    // Check dispatch button click
+    if (mx >= 260 && mx <= 370 && my >= 200 && my <= 224) {
+      PUZZLE.dispatch();
+      if (PUZZLE.status === 'DELIVERED') {
+        setTimeout(function () {
+          PUZZLE.active = false;
+          startDialogue('tube_hub.puzzle.cleared');
+        }, 400);
+      }
+      return;
+    }
+  }
+
+  if (G.dialogue) {
+    if (G.dialogue.choosing && G._drawnChoices) {
+      for (var i = 0; i < G._drawnChoices.labels.length; i++) {
+        var cy = 80 + i * 24;
+        if (my >= cy - 10 && my <= cy + 14) {
+          chooseOption(i);
+          return;
+        }
+      }
+    } else if (G.dialogue.waiting) {
+      advanceDialogue();
+    }
+  }
+});
+
+// ============================================================================
+// 11. MAIN LOOP WITH FIXED ACCUMULATOR
+// ============================================================================
+var lastNow = 0;
+var acc = 0;
+var STEP = 1000 / 60;
+
+function mainLoop(now) {
+  if (!lastNow) lastNow = now;
+  var dt = now - lastNow;
+  lastNow = now;
+  acc += dt;
+  var count = 0;
+  while (acc >= STEP && count < 5) {
+    update();
+    acc -= STEP;
+    count++;
+  }
+  render();
+  requestAnimationFrame(mainLoop);
+}
+requestAnimationFrame(mainLoop);
+window.__gameLoop = function (t) { update(); render(); };
+
+// ============================================================================
+// 12. DEBUG & TESTING API CONTRACT (window.__game.api)
+// ============================================================================
+window.__game = G;
+window.__game.sceneDef = sceneDef;
+window.__game.api = {
+  step: function (n) { skipTitle(); for (var i = 0; i < n; i++) update(); },
+  setSeed: setSeed,
+  hash: stateHash,
+  teleport: function (scene, x, y) { skipTitle(); enterScene(scene, x, y); },
+  input: function (op) { skipTitle(); G.inputQ.push(op); },
+  ff: function (b) { skipTitle(); G.ffMode = !!b; },
+  save: saveSlot,
+  load: function (n) { skipTitle(); return loadSlot(n); },
+  fps: function () { return 60; },
+  checkEp1Migration: checkEp1Migration,
+  windActive: function () { return G.scene === 'roof12'; },
+  openTubePuzzle: function () { PUZZLE.active = true; },
+  tubePuzzleState: function () { return { active: PUZZLE.active, status: PUZZLE.status }; },
+  scrambleTubePuzzle: function () { PUZZLE.init(); },
+  rotateValve: function (x, y) { PUZZLE.rotate(x, y); },
+  dispatchCapsule: function () { PUZZLE.dispatch(); },
+  solveTubePuzzle: function () { return PUZZLE.solve(); },
+  activeAudioVoice: function () { return AU.activeVoice; },
+  touchInput: function (opts) {
+    skipTitle();
+    if (opts.right !== undefined) live.right = opts.right;
+    if (opts.left !== undefined) live.left = opts.left;
+    if (opts.run !== undefined) live.run = opts.run;
+  },
+  interactWith: function (id) {
+    skipTitle();
+    var objs = sceneDef().objects || [];
+    for (var i = 0; i < objs.length; i++) {
+      if (objs[i].id === id && objs[i].node) {
+        startDialogue(objs[i].node);
+        return;
+      }
+    }
+  },
+  credits: function () { startDialogue('credits.start'); },
+  autoplay: function (maxFrames) {
+    skipTitle();
+    var startSpan = G.frame;
+    enterScene('roof12', 10, 10);
+    startDialogue('roof12.start');
+    G.ffMode = true;
+    for (var f = 0; f < (maxFrames || 3500); f++) {
+      if (G.dialogue) {
+        if (G.dialogue.choosing) chooseOption(1);
+        else advanceDialogue();
+      }
+      if (G.flags.ep2_cliffhanger) {
+        return { reached: true, frames: f, span: G.frame - startSpan };
+      }
+      update();
+    }
+    return { reached: G.flags.ep2_cliffhanger, frames: f, span: G.frame - startSpan };
+  }
+};
+
+// Check media preferences
+if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  G.flags.reducedMotion = true;
+}
+
+})();
+</script>
+</body>
+</html>
