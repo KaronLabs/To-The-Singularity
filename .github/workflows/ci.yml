@@ -16,3 +16,4 @@ jobs:
       - run: playwright install --with-deps chromium
       - run: python -B test_episode1.py
       - run: python -B test_episode2.py
+      - run: python -B test_episode3.py

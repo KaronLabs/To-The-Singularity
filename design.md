@@ -322,3 +322,12 @@ __game = {
     씬 세트 드레싱 5종(별하늘·달·난간 / 황동 배관·웜홀 램프 / 케이블·1995 달력 / 종유석·수정 발광 / 서가 벽·먼지) /
     페이드 인 전환 + 씬 명패 토스트. 전부 렌더/오디오 계층 — stateHash 입력·시뮬레이션 불변.
   - M15는 타자기 계약 반영(라인 완성 후 탭 = +1줄). 채증: review/shots/ep2b3_*.png 3장 육안 완료.
+
+
+## 13. Episode 3 《TO THE COURT》 빌드 대장
+
+| 빌드 | 내용 | 검증 |
+|---|---|---|
+| ep3-build1 | 아콘 시점 유머 법정극 — 증언-회상 배신(12.50/8.33/0.00%), 기각 수렴 선택지, 왕복달리기 심문, 승소 게이지(단조·클릭+1·해시 불가시), 반려 카운터 1,896→1,901 동결, 북극곰 무언 횡단, 1승 미공개 엔딩. Ep1 build7 엔진 모본, 오디오까지 결정론화(artRng) | strict PASS 22/22 · 해시 'ca834c3b' · 47노드 · span 1985 · 뮤테이션 6/6 · 채증 7장 · spec PENDING(삐빅스) |
+
+- Ep3 신규 계약: api hud/trial/advance/choose/gotoRound/enterRecollection/finishRecollection/gotoVerdict/summonToBench, 대사 op {stamp}, {gauge}, kind bench/mail/deco, drive 플래그 체인, SPOTS 회상 완주 감시자.

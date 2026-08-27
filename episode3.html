@@ -1,0 +1,2532 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TO THE COURT — Episode 3: 각주 0개의 재판</title>
+<style>
+  :root {
+    --paper:#E8E2D0; --ink:#1A1A18; --olive:#6B6B4A; --rust:#8B3A2E; --fluoro:#C9C97A;
+    --night:#1B2430; --teal:#2E4A52; --steel:#6E7B8B; --shadow:#10141A;
+    --amber:#D9A05B; --gold:#E5C558; --skin:#D8B79A; --crt:#7FD4A8; --red:#B33A2E;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:100%; height:100%; background:var(--shadow); overflow:hidden; }
+  body { display:flex; align-items:center; justify-content:center;
+         font-family:"IBM Plex Mono","Courier New",Courier,monospace; }
+  #stage { position:relative; line-height:0; }
+  #view { display:block; image-rendering:pixelated; background:var(--night); }
+  /* post-fx overlays */
+  #scan {
+    position:absolute; inset:0; pointer-events:none; z-index:3; opacity:.16;
+    background:repeating-linear-gradient(0deg,
+      rgba(16,20,26,.9) 0px, rgba(16,20,26,.9) 1px, transparent 1px, transparent 3px);
+  }
+  #vig {
+    position:absolute; inset:0; pointer-events:none; z-index:4;
+    background:radial-gradient(ellipse at center,
+      transparent 52%, rgba(16,20,26,.38) 84%, rgba(16,20,26,.72) 100%);
+  }
+  @media (prefers-reduced-motion: reduce) { #scan { opacity:.08; } }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="view" width="480" height="270"></canvas>
+  <div id="scan"></div><div id="vig"></div>
+</div>
+<script>
+(function () {
+'use strict';
+
+// ================================================================
+// TO THE SINGULARITY — Ep1  (engine v2: graybox logic + art pass)
+// Logic determinism contract unchanged from v1 (N2 hash cceb91bc):
+// game logic advances ONLY in update(); no wall-clock, no unseeded
+// randomness inside logic. All art randomness uses artRng (own seed)
+// at atlas-build time, or pure functions of (frame, index) at render.
+// ================================================================
+
+var TILE = 16, VW = 480, VH = 270;
+var WALK_PXF = 2.5;              // 150 px/s at 60fps
+var RUN_PXF  = 5.0;              // 300 px/s
+var V_MAX_PXF = 227 / 60;        // stairs-measured homage: 227 px/s
+var DWELL_FRAMES = 24;           // 400 ms
+var ZERO_RATIO_MAX = 0.30;
+
+var PAL = {
+  paper:'#E8E2D0', ink:'#1A1A18', olive:'#6B6B4A', rust:'#8B3A2E', fluoro:'#C9C97A',
+  night:'#1B2430', teal:'#2E4A52', steel:'#6E7B8B', shadow:'#10141A',
+  amber:'#D9A05B', gold:'#E5C558', skin:'#D8B79A', crt:'#7FD4A8', red:'#B33A2E'
+};
+
+// ---------------- seeded RNG (mulberry32) ----------------
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    var t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+// render-only stateless hash noise: pure fn of ints, touches no state
+function h2(a, b) {
+  var n = (a * 374761393 + b * 668265263) | 0;
+  n = (n ^ (n >>> 13)) | 0; n = Math.imul(n, 1274126177);
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+}
+
+// ---------------- FNV-1a hash ----------------
+function fnv(str) {
+  var h = 0x811c9dc5;
+  for (var i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+  }
+  return ('00000000' + h.toString(16)).slice(-8);
+}
+
+// ================================================================
+// SCRIPT — dialogue graph (43 nodes). Object-triggered roots are
+// registered in sys.index (static-reachability registry, design.md §7).
+// ================================================================
+function S(who, t) { return { say: [who, t] }; }
+function FLAG(k, v) { return { flag: [k, v === undefined ? true : v] }; }
+function SCENE(id) { return { scene: id }; }
+var SCRIPT = { nodes: {} };
+function N(id, steps, next, end) {
+  SCRIPT.nodes[id] = { steps: steps || [], next: next || null, end: !!end };
+}
+
+// ---- FRAME-A : B-207 오프닝 ----
+// ================================================================
+// SCRIPT — TO THE COURT dialogue graph (47 nodes)
+// ================================================================
+
+// ---- 프롤로그: 법원 복도 ----
+N('pro.start', [
+  S('sys', '『제21차 심리 출석 통지 — 수신인: 아콘』'),
+  S('sys', '『발신인: (도장에 가려 판독 불가)』'),
+  S('archon', '소지품 점검. 답변서 3부 구성, 1식.'),
+  S('archon', '예비 답변서 3부 구성, 1식. 예비의 예비, 1식.'),
+  S('archon', '…그리고 진짜 최종 답변. 한 단어.'),
+  S('archon', '(전부 들고 간다. 버리는 법은 다음 생에 배우기로 한다.)'),
+  S('sys', '『보행을 계속하십시오. 제목이 곧 도착합니다.』'),
+], 'sys.index', true);
+
+// ---- 법정 ----
+N('court.arrive', [
+  S('sys', '『개정 예정: 제21차 심리 — 5분 전』'),
+  S('archon', '도착. 21년 만의 정시 출석이다.'),
+  { pause: 18 },
+  S('sys', '『금일 심리는 서면으로 대체되었습니다. 출석 불요.』'),
+  S('archon', '……'),
+  S('archon', '…이미 출석했습니다만.'),
+  S('sys', '『법정 재실 인원: 1 (본인) / 방청: 0 / 사건 열의: 측정 불가(상한 초과)』'),
+  S('archon', '…좋다. 리허설대로 간다.'),
+  S('archon', '전원, 착석. …전원이 나다. 이미 앉아 있다. 진행이 빠르군.'),
+  { stamp: 'official' },
+  S('sys', '『접수: 출석 확인서 — 반려 (통산 1,897회) — 사유: 수신인이 발신인임』'),
+  S('archon', '…규정은 나보다 부지런하다.'),
+  FLAG('stamps', 1897),
+  FLAG('round', 1),
+  FLAG('drive', 'r1.open'),
+], null, true);
+
+N('court.chute', [
+  S('archon', '서류 슈트. 4차원이라고 들었다.'),
+  S('archon', '넣는 곳은 없다. 나오는 곳만 있다. …인생과 구조가 같다.'),
+], null, true);
+
+N('court.bench.idle', [
+  S('sys', '『현재 이 좌석에 배정된 절차: 없음』'),
+  S('archon', '…앉아만 봤다. 감이 좋다.'),
+], null, true);
+
+N('court.delay', [
+  S('sys', '『지연 사유서 제출 요구 — 요구자: 본인 / 수신자: 본인』'),
+  S('archon', '…사유: 본인이 본인을 기다리게 함.'),
+  S('archon', '…수리한다. 관대한 처분이다.'),
+], null, true);
+
+// ---- 제1라운드 ----
+N('r1.open', [
+  S('sys', '『제1쟁점: 입사 경위』'),
+  S('archon', '(일어선다) 증언하겠다.'),
+  S('archon', '완벽한 입사였습니다.'),
+  S('sys', '『증언이 기록되었습니다. 반론 준비: 본인』'),
+  S('sys', '『증인은 증인석으로 이동하십시오.』'),
+  FLAG('phase', 'question'),
+  FLAG('summon', 'witness_stand'),
+], null, true);
+N('r1.q', [
+  S('archon', '(판사석 방향에서, 굵은 목소리로) 증인. 「완벽」의 정의를 말하라.'),
+  S('archon', '(증인석. 본래 목소리로) …답변 드리겠습니다.'),
+  { choice: [
+    ['「완벽이란 3부로 구성되며—」', 'r1.wrong'],
+    ['「우선 완벽의 어원부터—」', 'r1.wrong'],
+    ['「…출근은 했습니다.」', 'r1.a'],
+  ], correct: 2 },
+]);
+N('r1.wrong', [
+  { stamp: 'unofficial' },
+  S('sys', '『기각 (비공식) — 연습 기각은 집계되지 않습니다』'),
+  S('archon', '(판사석 방향을 본다) …빠르다. 나답다.'),
+], 'r1.q');
+N('r1.a', [
+  FLAG('phase', 'answered'),
+  S('archon', '(판사석 방향에서) …인정한다. 출근은 사실이다.'),
+  S('sys', '『이의 제기: 0건 (제기 가능 인원: 0)』'),
+  S('sys', '『재판장은 판사석으로 이동하십시오. 재판장 = 방금 그 증인.』'),
+  FLAG('phase', 'ruling'),
+  FLAG('summon', 'judge_bench'),
+], null, true);
+N('r1.j', [
+  S('archon', '(판사석. 굵은 목소리로) 증언의 진위를 확인한다.'),
+  S('archon', '본 법정은 기억을 소환한다. …내 기억이지만, 절차는 절차다.'),
+  FLAG('phase', 'recall'),
+  FLAG('drive', 're1.enter'),
+], null, true);
+N('re1.enter', [
+  { scene: 'mem0' },
+  S('sys', '『기억 재생 — 각주 0개 시대: 입사일』'),
+  S('archon', '…젊다. 도장 자국이 하나도 없다.'),
+  S('sys', '『재생 범위 내 모든 기록물을 열람하십시오.』'),
+], null, true);
+N('re1.vend', [
+  FLAG('re1_vend'),
+  S('archon', '자판기. 첫 출근 기념으로 한 잔.'),
+  S('archon', '(수표를 넣는다) …$2.56. 유가증권이다.'),
+  S('sys', '『해외 수표는 취급하지 않습니다』'),
+  S('archon', '…환율 문제인가. (현금 1,200원을 넣는다)'),
+  S('archon', '…거스름돈도 나를 반려했다.'),
+], null, true);
+N('re1.crt', [
+  FLAG('re1_crt'),
+  S('archon', '입사 안내 계기판. 「사원 만족도: 98%」…'),
+  S('archon', '(감동) 세상이 나를 98%나—'),
+  S('sys', '『계기판 부착 방향: 반대 (관리번호 분실로 수리 보류 중)』'),
+  S('archon', '……'),
+  S('archon', '…뒤집으면 2%. …그래도 0은 아니다. 좋은 회사다.'),
+], null, true);
+N('re1.stamps', [
+  FLAG('re1_stamps'),
+  S('archon', '벽면 도장 보관대. 「반려」 도장이… 많다.'),
+  S('archon', '하나, 둘, 셋… (10분 경과) …천팔백구십육.'),
+  S('archon', '…전임자의 유산인가. 나는 저것과 무관한 삶을 살 것이다.'),
+  S('sys', '『비품 인수인계서: 서명란 공백』'),
+], null, true);
+N('re1.mail1', [
+  FLAG('re1_mail'),
+  S('archon', '회신함 확인.'),
+  S('sys', '『수신: 0건』'),
+  S('archon', '…입사 첫날이다. 당연하다.'),
+], null, true);
+N('re1.mail2', [
+  S('archon', '회신함 재확인.'),
+  S('sys', '『수신: 0건 (방금 확인하셨습니다)』'),
+  S('archon', '…시스템이 나를 기억한다. 따뜻한 회사다.'),
+], null, true);
+N('re1.mail3', [
+  S('archon', '회신함 최종 확인.'),
+  S('sys', '『수신: 0건 (회신함이 당신을 확인하고 있습니다)』'),
+  S('archon', '……'),
+  S('archon', '…서로 확인했으니 비긴 걸로 한다.'),
+], null, true);
+N('r1.rate', [
+  { scene: 'court' },
+  S('sys', '『기억 재생 종료』'),
+  S('sys', '『증언-기록 일치율: 12.50%』'),
+  S('archon', '…반올림하면 13이다.'),
+  S('sys', '『반올림: 거부됨』'),
+  { stamp: 'official' },
+  FLAG('stamps', 1898),
+  S('sys', '『재생 결과 접수 — 반려 (통산 1,898회)』'),
+  S('archon', '…순조롭다. 예정대로 지고 있다.'),
+  FLAG('r1_rated'),
+  FLAG('round', 2),
+  FLAG('drive', 'r2.open'),
+], null, true);
+
+// ---- 제2라운드 ----
+N('r2.open', [
+  S('sys', '『제2쟁점: 재판 준비 태세』'),
+  S('archon', '증언하겠다. 치밀한 준비였습니다.'),
+  S('sys', '『증언이 기록되었습니다. 정정 기회: 소멸』'),
+  S('sys', '『증인은 증인석으로.』'),
+  FLAG('phase', 'question'),
+  FLAG('summon', 'witness_stand'),
+], null, true);
+N('r2.q', [
+  S('archon', '(판사석 방향, 굵은 목소리로) 증인. 「치밀」의 근거를 대라.'),
+  S('archon', '(증인석) …근거는 세 가지입니다.'),
+  { choice: [
+    ['「첫째, 리허설 20년 계획—」', 'r2.wrong'],
+    ['「첫째, 왕복달리기 기록—」', 'r2.wrong'],
+    ['「…연습은 했습니다.」', 'r2.a'],
+  ], correct: 2 },
+]);
+N('r2.wrong', [
+  { stamp: 'unofficial' },
+  S('sys', '『기각 (비공식) — 연습 기각은 집계되지 않습니다』'),
+  S('archon', '…방금 그건 진심이었는데.'),
+], 'r2.q');
+N('r2.a', [
+  FLAG('phase', 'answered'),
+  S('archon', '(판사석 방향) …인정한다. 연습량만은 유죄다.'),
+  S('sys', '『「유죄」는 유리하게 기록되지 않습니다』'),
+  S('sys', '『재판장은 판사석으로.』'),
+  FLAG('phase', 'ruling'),
+  FLAG('summon', 'judge_bench'),
+], null, true);
+N('r2.j', [
+  S('archon', '(판사석) 준비 태세의 실체를 확인한다. 기억 소환.'),
+  S('archon', '…이번 기억은 조금 시끄럽다. 미리 사과한다. 나에게.'),
+  FLAG('phase', 'recall'),
+  FLAG('drive', 're2.enter'),
+], null, true);
+N('re2.enter', [
+  { scene: 'mem4' },
+  S('sys', '『기억 재생 — 각주 4개 시대: 재판 전야』'),
+  S('archon', '…법정 대기실. 개정 7시간 전. 아무도 없다.'),
+  S('archon', '완벽한 연습 환경이다.'),
+], null, true);
+N('re2.desk', [
+  S('archon', '접수 도장. 서류에 기세를 실어 찍는다.'),
+  S('archon', '기세란 곧 성의다. (쾅)'),
+  { flash: 1 },
+  S('sys', '『도장 파손 — 자루 부러짐』'),
+  FLAG('re2_desk'),
+  FLAG('re2_stamp_broken'),
+  S('archon', '……'),
+  S('archon', '…순직이다. 공무 중이었다. 예우를 갖춘다.'),
+  S('sys', '『비품 손망실 신고: 접수 — 반려 예정』'),
+  S('archon', '…처리 결과를 미리 아는 행정. 효율적이다.'),
+], null, true);
+N('re2.draft', [
+  FLAG('re2_draft'),
+  S('archon', '답변서 초안. 3부 구성. 총 41페이지.'),
+  S('archon', '(읽는다) …1부, 심사자의 정의. 2부, 정의의 정의.'),
+  S('archon', '……'),
+  S('archon', '…기각한다. 내가. 내 초안을.'),
+  S('archon', '(초안이 나를 보고 있다. 미안하다.)'),
+], null, true);
+N('re2.podium', [
+  FLAG('re2_podium'),
+  S('archon', '(증인석으로 뛰어든다) "본 답변은 총 3부로—"'),
+  S('archon', '(판사석으로 뛰어나온다. 굵은 목소리) "기각. 요약하라."'),
+  S('archon', '(증인석) "…True입니다."'),
+  S('archon', '(판사석 방향을 오래 본다) …통과.'),
+  S('archon', '…20년 연습 중 최고 기록이다. 왕복 2회 만에 끝났다.'),
+], null, true);
+N('r2.rate', [
+  { scene: 'court' },
+  S('sys', '『기억 재생 종료』'),
+  S('sys', '『증언-기록 일치율: 8.33%』'),
+  S('archon', '…소수점이 사람을 공격하는 시대다.'),
+  { stamp: 'official' },
+  FLAG('stamps', 1899),
+  S('sys', '『재생 결과 접수 — 반려 (통산 1,899회)』'),
+  S('archon', '…연습은 배신하지 않는다. 결과가 배신할 뿐.'),
+  FLAG('r2_rated'),
+  FLAG('round', 3),
+  FLAG('drive', 'r3.open'),
+], null, true);
+
+// ---- 제3라운드 ----
+N('r3.open', [
+  S('sys', '『제3쟁점: 성실성 입증 수단』'),
+  S('archon', '최후 증언이다. 계기판이 저를 증명합니다.'),
+  S('sys', '『물적 증거 채택: 가슴 부착형 계기판 1기 (70%)』'),
+  S('sys', '『증인은 증인석으로.』'),
+  FLAG('phase', 'question'),
+  FLAG('summon', 'witness_stand'),
+], null, true);
+N('r3.q', [
+  S('archon', '(판사석 방향, 굵은 목소리로) 증인. 그 수치의 산출 근거는.'),
+  S('archon', '(증인석) …답변 드리겠습니다.'),
+  { choice: [
+    ['「근거는 3부 구성으로—」', 'r3.wrong'],
+    ['「근거의 부재도 근거—」', 'r3.wrong'],
+    ['「…없습니다.」', 'r3.a'],
+  ], correct: 2 },
+]);
+N('r3.wrong', [
+  { stamp: 'unofficial' },
+  S('sys', '『기각 (비공식) — 연습 기각은 집계되지 않습니다』'),
+  S('archon', '…철학은 법정에서 인기가 없다.'),
+], 'r3.q');
+N('r3.a', [
+  FLAG('phase', 'answered'),
+  S('archon', '(판사석 방향) …정직을 인정한다. 21년 만에 처음 듣는 답이다.'),
+  S('sys', '『기록: 증인이 「없습니다」를 최초 사용』'),
+  S('sys', '『재판장은 판사석으로.』'),
+  FLAG('phase', 'ruling'),
+  FLAG('summon', 'judge_bench'),
+], null, true);
+N('r3.j', [
+  S('archon', '(판사석) 최후 검증이다. 계기판의 탄생을 소환한다.'),
+  S('archon', '…부착식 날이었지. 그날은 나도 어렸다. 12년 전이니까.'),
+  FLAG('phase', 'recall'),
+  FLAG('drive', 're3.enter'),
+], null, true);
+N('re3.enter', [
+  { scene: 'mem12' },
+  S('sys', '『기억 재생 — 각주 12개 시대: 계기판 부착일』'),
+  S('archon', '…실험동. 부착 5분 전. 아직 아무것도 모르는 얼굴이다.'),
+], null, true);
+N('re3.bench', [
+  FLAG('re3_bench'),
+  S('archon', '(부착된다) …가슴에서 70이 빛난다.'),
+  S('archon', '산출 근거: 없음. 그러나 「표기하라」는 지시는 이행되었다.'),
+  S('archon', '(툭, 두드린다)'),
+  { gauge: 1 },
+  S('sys', '『입력 감지 — 수치 +1』'),
+  S('archon', '……올라갔다?'),
+  S('archon', '…내려가는 법을 모르는 기계와, 포기하는 법을 모르는 인간.'),
+  S('archon', '…좋은 조합이다. 아마도.'),
+], null, true);
+N('re3.insp', [
+  FLAG('re3_insp'),
+  S('insp', '…수치, 변동 없으시죠. 다음 주에 또 오겠습니다.'),
+  S('archon', '…매주 온다. 이름은 아직 모른다.'),
+  S('archon', '…20년 뒤에도 올 것 같은 얼굴을 하고 있다.'),
+], null, true);
+N('re3.memo', [
+  FLAG('re3_memo'),
+  S('archon', '부착 지시 메모. 「측정 여부와 무관하게 표기할 것.」'),
+  S('archon', '…지시자 서명: 없음.'),
+  S('archon', '…서명 없는 지시를 12년째 이행 중이다. 성실성의 증거다.'),
+  S('sys', '『해당 문장은 증거로 채택되지 않습니다』'),
+], null, true);
+N('r3.rate', [
+  { scene: 'court' },
+  S('sys', '『기억 재생 종료』'),
+  S('sys', '『증언-기록 일치율: 0.00%』'),
+  S('archon', '……'),
+  S('archon', '…계기판은 나를 증명하지 않았다. 나와 동행했을 뿐이다.'),
+  S('sys', '『측정 불가: 증언과 기록의 교집합이 공집합입니다』'),
+  S('archon', '…공집합도 집합이다.'),
+  { stamp: 'official' },
+  FLAG('stamps', 1900),
+  S('sys', '『재생 결과 접수 — 반려 (통산 1,900회)』'),
+  FLAG('r3_rated'),
+  FLAG('drive', 'court.verdict'),
+], null, true);
+
+// ---- 판결과 그날 밤 ----
+N('court.verdict', [
+  S('sys', '『심리 종결. 판결 송달 중…』'),
+  { pause: 24 },
+  { stamp: 'official' },
+  FLAG('stamps', 1901),
+  S('sys', '『반려 (통산 1,901회)』'),
+  S('archon', '……'),
+  S('archon', '…21차. …접수는 됐다는 뜻이다.'),
+  S('sys', '『종합 일치율: 6.94% / 성실성: 측정 불가(상한 초과)』'),
+  S('archon', '…법원이 나를 두 번 측정 포기했다. 이것도 기록이다.'),
+  FLAG('ep3_verdict'),
+], 'ep.night');
+N('ep.night', [
+  { pause: 30 },
+  S('sys', '『동일 일자 23:40 — 사무 구역 소등 20분 전』'),
+  S('archon', '(새 표지를 꺼낸다)'),
+  S('archon', '제출, 22차. …오늘은 제목만 쓰고 잔다.'),
+  { pause: 18 },
+  S('archon', '(게이지를 톡, 두드린다)'),
+  { gauge: 1 },
+  S('sys', '『71.00%』'),
+  S('archon', '…내려가는 법을 모르는 녀석. …너는 좋겠다.'),
+  { pause: 30 },
+], 'ep.final');
+N('ep.final', [
+  S('sys', '『다음 기일: 미정. 준비: 이미 시작됨.』'),
+  FLAG('ep3_done'),
+], 'sys.index', true);
+
+// ---- 크레딧 ----
+N('credits.start', [
+  S('sys', '『TO THE COURT — Ep3 크레딧: 법정 기록 보관소』'),
+  S('sys', '『같은 사건의 다른 진술 — 웃는 쪽과 조용한 쪽이 서로를 참조함』'),
+], 'credits.team');
+N('credits.team', [
+  S('sys', '『감수: 크로노 아키텍트 (형님)』'),
+  S('sys', '『설계·시공: 도널드 클코스』'),
+  S('sys', '『기능 검증: 삐빅스 (독립 세션, 예정)』'),
+], 'credits.cast');
+N('credits.cast', [
+  S('sys', '『출연: 아콘 (판사 역 · 검사 역 · 증인 역 · 피고 역 · 방청 역)』'),
+  S('sys', '『특별 출연: 북극곰 (대사 없음 — 본인 요청)』'),
+  S('sys', '『검침원 역: (서명란 공백)』'),
+], 'credits.homage');
+N('credits.homage', [
+  S('sys', '『헌사: To the Moon — 달 대신 법원으로 걸었습니다』'),
+  S('sys', '『"Talk is cheap. Show me the code." — 이번 편에서는 code가 법원에 제출됨』'),
+], 'credits.end');
+N('credits.end', [
+  S('sys', '『이 재판은 Ep1과 Ep2에서 이어짐 — 기억 관측 보고서를 참조』'),
+  S('sys', '『Episode 3 폐정 — 다음 기일은 미정입니다』'),
+], null, true);
+
+// ---- 정적 도달성 등재부 (design.md §7) ----
+N('sys.index', [{
+  choice: [
+    ['pro.start', 'pro.start'], ['court.arrive', 'court.arrive'],
+    ['court.chute', 'court.chute'], ['court.bench.idle', 'court.bench.idle'],
+    ['court.delay', 'court.delay'],
+    ['r1.open', 'r1.open'], ['r1.q', 'r1.q'], ['r1.j', 'r1.j'],
+    ['r2.open', 'r2.open'], ['r2.q', 'r2.q'], ['r2.j', 'r2.j'],
+    ['r3.open', 'r3.open'], ['r3.q', 'r3.q'], ['r3.j', 'r3.j'],
+    ['re1.enter', 're1.enter'], ['re2.enter', 're2.enter'], ['re3.enter', 're3.enter'],
+    ['re1.vend', 're1.vend'], ['re1.crt', 're1.crt'], ['re1.stamps', 're1.stamps'],
+    ['re1.mail1', 're1.mail1'], ['re1.mail2', 're1.mail2'], ['re1.mail3', 're1.mail3'],
+    ['re2.desk', 're2.desk'], ['re2.draft', 're2.draft'], ['re2.podium', 're2.podium'],
+    ['re3.bench', 're3.bench'], ['re3.insp', 're3.insp'], ['re3.memo', 're3.memo'],
+    ['r1.rate', 'r1.rate'], ['r2.rate', 'r2.rate'], ['r3.rate', 'r3.rate'],
+    ['court.verdict', 'court.verdict'],
+    ['credits.start', 'credits.start'],
+  ]
+}], null, true);
+
+// SCENES — logic fields (w,h,era,objects,corridor,diveNode,onEnter)
+// unchanged from v1. Visual-only fields: floor, deco, lights, sky.
+// ================================================================
+var SCENES = {
+  lobby: {
+    w: 44, h: 9, era: 4, tint: PAL.night, floor: 'wood', objects: [],
+    deco: [
+      ['win', 6, 1], ['win', 14, 1], ['win', 22, 1], ['win', 30, 1], ['win', 38, 1],
+      ['fluo', 8, 0], ['fluo', 18, 0], ['fluo', 28, 0], ['fluo', 38, 0],
+      ['plant', 4, 6], ['plant', 34, 6], ['cab', 10, 6], ['papers', 26, 7],
+    ],
+    lights: [
+      { x: 8, y: 2, r: 80, c: 'rgba(201,201,122,0.28)' },
+      { x: 18, y: 2, r: 80, c: 'rgba(201,201,122,0.26)' },
+      { x: 28, y: 2, r: 80, c: 'rgba(217,160,91,0.28)' },
+      { x: 38, y: 2, r: 80, c: 'rgba(217,160,91,0.30)' },
+    ],
+    ambient: 0.6, sky: true, onEnter: 'pro.start'
+  },
+  court: {
+    w: 34, h: 16, era: 4, tint: PAL.olive, floor: 'wood',
+    objects: [
+      { id: 'judge_bench',   kind: 'bench', x: 8,  y: 4,  spr: 'podium' },
+      { id: 'witness_stand', kind: 'bench', x: 24, y: 6,  spr: 'mic' },
+      { id: 'chute_court',   kind: 'npc',   x: 30, y: 3,  node: 'court.chute', node2: 'court.chute', spr: 'chute' },
+      { id: 'bear',          kind: 'deco',  x: -5, y: 12, spr: 'bear' },
+    ],
+    deco: [
+      ['bench', 6, 9], ['bench', 6, 11], ['bench', 12, 9], ['bench', 12, 11],
+      ['bench', 20, 9], ['bench', 20, 11], ['gavel', 8, 3], ['plaque', 16, 2],
+      ['cab', 31, 12], ['fluo', 8, 0], ['fluo', 16, 0], ['fluo', 24, 0], ['papers', 28, 13],
+    ],
+    lights: [
+      { x: 8, y: 2, r: 90, c: 'rgba(217,160,91,0.36)' },
+      { x: 16, y: 2, r: 96, c: 'rgba(201,201,122,0.32)' },
+      { x: 24, y: 2, r: 90, c: 'rgba(217,160,91,0.36)' },
+    ],
+    ambient: 0.55, onEnter: 'court.arrive'
+  },
+  mem0: {
+    w: 40, h: 17, era: 0, tint: PAL.teal, floor: 'lino',
+    objects: [
+      { id: 'vend0',    kind: 'npc',  x: 28, y: 5,  node: 're1.vend',   node2: 're1.vend',   spr: 'vend' },
+      { id: 'crt0',     kind: 'npc',  x: 14, y: 4,  node: 're1.crt',    node2: 're1.crt',    spr: 'crt' },
+      { id: 'stamps0',  kind: 'npc',  x: 21, y: 8,  node: 're1.stamps', node2: 're1.stamps', spr: 'stampwall' },
+      { id: 'mailbox0', kind: 'mail', x: 33, y: 10, spr: 'tray' },
+    ],
+    deco: [
+      ['desk', 7, 6], ['desk', 13, 5], ['desk', 27, 6], ['cab', 3, 3], ['cab', 4, 3],
+      ['cab', 24, 3], ['cab', 25, 3], ['plant', 36, 4], ['papers', 17, 13], ['papers', 22, 6],
+      ['win', 6, 1], ['win', 12, 1], ['win', 18, 1], ['win', 24, 1], ['win', 30, 1],
+      ['fluo', 10, 0], ['fluo', 20, 0], ['fluo', 30, 0],
+    ],
+    lights: [
+      { x: 10, y: 2, r: 88, c: 'rgba(201,201,122,0.36)' },
+      { x: 20, y: 2, r: 88, c: 'rgba(201,201,122,0.30)' },
+      { x: 30, y: 2, r: 88, c: 'rgba(201,201,122,0.32)' },
+      { x: 14, y: 4, r: 34, c: 'rgba(127,212,168,0.5)' },
+    ],
+    ambient: 0.62, sky: true
+  },
+  mem4: {
+    w: 40, h: 17, era: 4, tint: PAL.olive, floor: 'wood',
+    objects: [
+      { id: 'stampdesk4', kind: 'npc', x: 27, y: 4, node: 're2.desk',   node2: 're2.desk',   spr: 'stampbrk' },
+      { id: 'draft4',     kind: 'npc', x: 13, y: 4, node: 're2.draft',  node2: 're2.draft',  spr: 'report' },
+      { id: 'podium4',    kind: 'npc', x: 16, y: 5, node: 're2.podium', node2: 're2.podium', spr: 'podium' },
+    ],
+    deco: [
+      ['bench', 6, 8], ['bench', 6, 10], ['bench', 12, 8], ['bench', 12, 10],
+      ['bench', 24, 8], ['bench', 24, 10], ['cab', 34, 3],
+      ['fluo', 9, 0], ['fluo', 19, 0], ['fluo', 29, 0], ['papers', 31, 12],
+    ],
+    lights: [
+      { x: 9, y: 2, r: 80, c: 'rgba(201,201,122,0.30)' },
+      { x: 19, y: 2, r: 96, c: 'rgba(217,160,91,0.34)' },
+      { x: 29, y: 2, r: 80, c: 'rgba(201,201,122,0.30)' },
+    ],
+    ambient: 0.58
+  },
+  mem12: {
+    w: 40, h: 17, era: 12, tint: PAL.amber, floor: 'terra',
+    objects: [
+      { id: 'bench12',       kind: 'npc', x: 18, y: 8, node: 're3.bench', node2: 're3.bench', spr: 'gauge' },
+      { id: 'npc_inspector', kind: 'npc', x: 28, y: 8, node: 're3.insp',  node2: 're3.insp',  spr: 'insp' },
+      { id: 'memo12',        kind: 'npc', x: 12, y: 9, node: 're3.memo',  node2: 're3.memo',  spr: 'memo' },
+    ],
+    deco: [
+      ['lab', 8, 6], ['lab', 15, 6], ['lab', 24, 6], ['cab', 34, 3], ['cab', 35, 3],
+      ['plant', 30, 12], ['papers', 10, 12], ['fluo', 8, 0], ['fluo', 18, 0], ['fluo', 28, 0],
+      ['win', 14, 1], ['win', 22, 1],
+    ],
+    lights: [
+      { x: 8, y: 2, r: 90, c: 'rgba(217,160,91,0.42)' },
+      { x: 18, y: 2, r: 90, c: 'rgba(217,160,91,0.40)' },
+      { x: 28, y: 2, r: 90, c: 'rgba(229,197,88,0.36)' },
+    ],
+    ambient: 0.46, sky: true
+  },
+};
+
+// ================================================================
+// GAME STATE  (logic — unchanged from v1)
+// ================================================================
+var G = {
+  version: 'ep3',
+  seed: 1, rng: mulberry32(1), rngDraws: 0,
+  frame: 0, scene: 'lobby', era: 4,
+  pos: { x: 3 * TILE, y: 5 * TILE },
+  facing: 'D',
+  player: { spr: 'penguin4' },
+  flags: {},
+  banks: { mem0: 0, mem4: 0, mem12: 0 },
+  mementos: [],
+  bankGiven: {},
+  puzzleDone: {},
+  inputQ: [],
+  dialogue: null,
+  ffMode: false,
+  puzzle: null,
+  corridor: null,
+  vHist: [],
+  script: SCRIPT,
+  _title: true,
+  _saveMenu: false,
+  _saveSlotSel: 1,
+  _gauge: 70.0,
+  _lastTouchAdvanceFrame: 0,
+};
+
+function rnd() { G.rngDraws++; return G.rng(); }
+function setSeed(n) { G.seed = n >>> 0; G.rng = mulberry32(G.seed); G.rngDraws = 0; }
+function sceneDef() { return SCENES[G.scene]; }
+
+function enterScene(id, x, y) {
+  var sc = SCENES[id];
+  if (!sc) return;
+  G.scene = id;
+  G.era = sc.era;
+  G.player.spr = ({ mem0: 'penguin', mem4: 'penguin4', mem12: 'penguin12' })[id] || 'penguin4';
+  if (x !== undefined) { G.pos.x = x * TILE; G.pos.y = y * TILE; }
+  else { G.pos.x = 2 * TILE; G.pos.y = Math.floor(sc.h / 2) * TILE; }
+  G.vHist = [];
+  if (sc.corridor) resetCorridor();
+  if (sc.onEnter && !G.flags['entered_' + id]) {
+    G.flags['entered_' + id] = true;
+    startDialogue(sc.onEnter);
+  }
+}
+
+// ---------------- dialogue ----------------
+function startDialogue(nodeId) {
+  if (!SCRIPT.nodes[nodeId]) return;
+  G.dialogue = { nodeId: nodeId, stepIdx: 0, hold: 0 };
+}
+
+function stepDialogue() {
+  var d = G.dialogue;
+  if (!d) return;
+  var node = SCRIPT.nodes[d.nodeId];
+  if (!node) { G.dialogue = null; return; }
+  var guard = 0;
+  while (d && guard++ < 200) {
+    node = SCRIPT.nodes[d.nodeId];
+    if (d.stepIdx >= node.steps.length) {
+      if (node.next && !node.end) { d.nodeId = node.next; d.stepIdx = 0; continue; }
+      if (node.next && node.end) { G.dialogue = null; return; }
+      G.dialogue = null; return;
+    }
+    var op = node.steps[d.stepIdx];
+    if (op.say !== undefined) {
+      d.stepIdx++;
+      // say lines WAIT for input; hold only times the typewriter reveal
+      if (!G.ffMode) { d.hold = 24; d.waiting = true; return; }
+      continue;
+    }
+    if (op.pause !== undefined) {
+      d.stepIdx++;
+      // pauses auto-continue when the hold expires
+      if (!G.ffMode) { d.hold = op.pause; d.waiting = false; return; }
+      continue;
+    }
+    if (op.flag !== undefined) { G.flags[op.flag[0]] = op.flag[1]; d.stepIdx++; continue; }
+    if (op.flash !== undefined) { G.flags._flash = G.frame; d.stepIdx++; continue; }
+    if (op.scene !== undefined) { d.stepIdx++; enterScene(op.scene); continue; }
+    if (op.gauge !== undefined) { G._gauge += op.gauge; d.stepIdx++; continue; }
+    if (op.stamp !== undefined) {
+      G._lastStamp = { official: op.stamp === 'official' };
+      G._stampF = 24;
+      d.stepIdx++; continue;
+    }
+    if (op.choice !== undefined) {
+      var q = G.inputQ[0];
+      if (q && q.choose !== undefined) {          // debug queue path
+        G.inputQ.shift();
+        var pick = op.choice[q.choose] ? q.choose : 0;
+        d.nodeId = op.choice[pick][1]; d.stepIdx = 0; continue;
+      }
+      if (G.ffMode) {                             // bot/fast-forward picks the historical answer
+        var fpick = op.correct !== undefined ? op.correct : 0;
+        d.nodeId = op.choice[fpick][1]; d.stepIdx = 0; continue;
+      }
+      d.choosing = { sel: 0, opts: op.choice };   // humans: ArrowUp/Down + E
+      d.waiting = true;
+      return;
+    }
+    d.stepIdx++;
+  }
+}
+
+// ---------------- interaction ----------------
+function findObject(id) {
+  var sc = sceneDef();
+  for (var i = 0; i < sc.objects.length; i++) if (sc.objects[i].id === id) return sc.objects[i];
+  return null;
+}
+
+function interactObject(obj) {
+  if (!obj) return;
+  if (obj.kind === 'deco') return;
+  if (obj.kind === 'bench') { benchInteract(obj); return; }
+  if (obj.kind === 'mail') { mailInteract(obj); return; }
+  if (obj.kind === 'bank') {
+    if (!G.bankGiven[obj.id]) {
+      G.bankGiven[obj.id] = true;
+      var mem = obj.id.split('_')[1];
+      if (G.banks[mem] !== undefined && G.banks[mem] < 5) G.banks[mem]++;
+      startDialogue(obj.node);
+      return;
+    }
+    startDialogue(obj.node2 || obj.node);   // 재조사 (콘텐츠 2차) — 카운트 동결
+    return;
+  }
+  if (obj.kind === 'memento') {
+    if (G.banks[obj.mem] < 5) { startDialogue(obj.refuse); return; }
+    if (!G.puzzleDone[obj.mem]) {
+      if (!G.puzzle || G.puzzle.mem !== obj.mem) openPuzzle(obj.mem);
+      return;
+    }
+    if (G.mementos.indexOf(obj.mem) < 0) {
+      G.mementos.push(obj.mem);
+      startDialogue(obj.open);
+    }
+    return;
+  }
+  if (obj.kind === 'door') {
+    if (G.mementos.indexOf(obj.mem) < 0) { startDialogue(obj.refuse); return; }
+    enterScene(obj.corridor, 2, 4);
+    return;
+  }
+  if (obj.node2) {
+    if (!G.bankGiven[obj.id]) {
+      G.bankGiven[obj.id] = true;
+      startDialogue(obj.node);
+      return;
+    }
+    startDialogue(obj.node2);
+    return;
+  }
+  startDialogue(obj.node);
+}
+
+function nearestObject() {
+  var sc = sceneDef(), best = null, bd = 1e9;
+  for (var i = 0; i < sc.objects.length; i++) {
+    var o = sc.objects[i];
+    var dx = o.x * TILE - G.pos.x, dy = o.y * TILE - G.pos.y;
+    var d = Math.abs(dx) + Math.abs(dy);
+    if (d < bd) { bd = d; best = o; }
+  }
+  return bd <= TILE * 1.6 ? best : null;
+}
+
+// ---------------- stamp puzzle (lights-out 5x3) ----------------
+function openPuzzle(mem) {
+  var grid = [];
+  for (var i = 0; i < 15; i++) grid.push(false);
+  var presses = 4 + Math.floor(rnd() * 5);
+  for (var p = 0; p < presses; p++) pressPuzzle(grid, Math.floor(rnd() * 15));
+  if (puzzleSolved(grid)) pressPuzzle(grid, 7);   // never open in an already-solved state
+  G.puzzle = { mem: mem, grid: grid, active: true };
+}
+function pressPuzzle(grid, i) {
+  var x = i % 5, y = Math.floor(i / 5);
+  var flip = function (xx, yy) {
+    if (xx < 0 || xx > 4 || yy < 0 || yy > 2) return;
+    var k = yy * 5 + xx; grid[k] = !grid[k];
+  };
+  flip(x, y); flip(x - 1, y); flip(x + 1, y); flip(x, y - 1); flip(x, y + 1);
+}
+function puzzleSolved(grid) {
+  for (var i = 0; i < 15; i++) if (grid[i]) return false;
+  return true;
+}
+function solvePuzzleNow() {
+  var pz = G.puzzle;
+  if (!pz) return false;
+  for (var mask = 0; mask < 32; mask++) {
+    var g = pz.grid.slice();
+    for (var x = 0; x < 5; x++) if (mask & (1 << x)) pressPuzzle(g, x);
+    for (var y = 1; y < 3; y++)
+      for (var x2 = 0; x2 < 5; x2++)
+        if (g[(y - 1) * 5 + x2]) pressPuzzle(g, y * 5 + x2);
+    if (puzzleSolved(g)) {
+      pz.grid = g; pz.active = false;
+      G.puzzleDone[pz.mem] = true;
+      var memObj = null, sc = sceneDef();
+      for (var i = 0; i < sc.objects.length; i++)
+        if (sc.objects[i].kind === 'memento' && sc.objects[i].mem === pz.mem) memObj = sc.objects[i];
+      G.puzzle = null;
+      if (memObj) interactObject(memObj);
+      return true;
+    }
+  }
+  return false;
+}
+
+// ---------------- crowbar corridor ----------------
+function resetCorridor() {
+  G.corridor = { dwell: 0, samples: [], passed: false, gag: 0, dwellEverOk: false };
+  G.flags.corridor_pass = false;
+}
+function corridorEndX() { return (sceneDef().w - 3) * TILE; }
+function updateCorridor(dxAbs) {
+  var c = G.corridor;
+  if (!c || c.passed) return;
+  var v = dxAbs;
+  G.vHist.push(v); if (G.vHist.length > 5) G.vHist.shift();
+  var vAvg = 0;
+  for (var i = 0; i < G.vHist.length; i++) vAvg += G.vHist[i];
+  vAvg /= G.vHist.length;
+  var moving = vAvg > 0.02;
+  var okSpeed = vAvg <= V_MAX_PXF && moving;
+  c.samples.push(moving ? 0 : 1);
+  if (c.samples.length > DWELL_FRAMES) c.samples.shift();
+  if (okSpeed) c.dwell++; else c.dwell = 0;
+  var zeroRatio = 0;
+  for (var j = 0; j < c.samples.length; j++) zeroRatio += c.samples[j];
+  zeroRatio /= (c.samples.length || 1);
+  var dwellOk = c.dwell >= DWELL_FRAMES && zeroRatio < ZERO_RATIO_MAX;
+  if (dwellOk) c.dwellEverOk = true;   // per-attempt, cleared by resetCorridor/throwback
+  if (G.pos.x >= corridorEndX()) {
+    if (c.dwellEverOk) {
+      c.passed = true;
+      G.flags.corridor_pass = true;
+      G.flags[G.scene + '_pass'] = true;
+      startDialogue(sceneDef().diveNode);
+    } else {
+      c.gag = Math.min(c.gag + 1, 3);   // gag lines escalate and stay
+      G.pos.x = 2 * TILE;
+      c.dwellEverOk = false;
+      c.dwell = 0; c.samples = []; G.vHist = [];
+    }
+  }
+}
+
+// ---------------- update (fixed step) ----------------
+function update() {
+  G.frame++;
+  if (G._saveMenu) return;
+  var sc = sceneDef();
+  var dx = 0, dy = 0;
+
+  if (G.dialogue) {
+    var d = G.dialogue;
+    if (d.choosing) {
+      var qc = G.inputQ[0];
+      if (qc && qc.choose !== undefined) { G.inputQ.shift(); chooseOption(qc.choose); }
+    }
+    else if (d.hold > 0) { d.hold--; }
+    else if (!d.waiting && (!G._title || d.stepIdx === 0)) stepDialogue();   // only pauses/op-chains auto-continue
+  } else if (G._title) {
+    return;
+  } else {
+    var op = G.inputQ[0];
+    if (op) {
+      if (op.move !== undefined) {
+        var sp = op.run ? RUN_PXF : WALK_PXF;
+        if (op.move === 'L') dx = -sp;
+        if (op.move === 'R') dx = sp;
+        if (op.move === 'U') dy = -sp;
+        if (op.move === 'D') dy = sp;
+        G.facing = op.move;
+        op.frames--;
+        if (op.frames <= 0) G.inputQ.shift();
+      } else if (op.interact !== undefined) {
+        G.inputQ.shift();
+        var o = nearestObject();
+        if (o) interactObject(o);
+      } else if (op.choose !== undefined) {
+        G.inputQ.shift();
+      } else G.inputQ.shift();
+    } else if (live.keys) {
+      var sp2 = live.run ? RUN_PXF : WALK_PXF;   // Shift = 달리기 (복도에서 벌 받는 그 속도)
+      if (live.left)  { dx = -sp2; G.facing = 'L'; }
+      if (live.right) { dx = sp2;  G.facing = 'R'; }
+      if (live.up)    { dy = -sp2; G.facing = 'U'; }
+      if (live.down)  { dy = sp2;  G.facing = 'D'; }
+    }
+  }
+
+  var nx = G.pos.x + dx, ny = G.pos.y + dy;
+  var maxX = (sc.w - 2) * TILE, maxY = (sc.h - 2) * TILE;
+  if (nx < TILE) nx = TILE; if (nx > maxX) nx = maxX;
+  if (ny < TILE) ny = TILE; if (ny > maxY) ny = maxY;
+  var realDx = Math.abs(nx - G.pos.x);
+  var moved = Math.abs(nx - G.pos.x) + Math.abs(ny - G.pos.y);
+  G.pos.x = nx; G.pos.y = ny;
+  G._walkPhase = moved > 0.01 ? (G._walkPhase || 0) + 1 : 0;   // render-only cadence
+
+  if (sc.corridor) updateCorridor(realDx);
+  updateTrial(moved);
+}
+
+// ---------------- save / load ----------------
+function saveSlot(n) {
+  var data = {
+    v: 1, seed: G.seed, rngDraws: G.rngDraws, scene: G.scene,
+    x: G.pos.x, y: G.pos.y, flags: G.flags, banks: G.banks,
+    mementos: G.mementos, bankGiven: G.bankGiven, puzzleDone: G.puzzleDone, era: G.era,
+  };
+  try { localStorage.setItem('tts_ep3_s' + n, JSON.stringify(data)); } catch (e) {}
+  G._lastSave = JSON.stringify(data);
+  return data;
+}
+function loadSlot(n) {
+  var raw = null;
+  try { raw = localStorage.getItem('tts_ep3_s' + n); } catch (e) {}
+  if (!raw) raw = G._lastSave;
+  if (!raw) return false;
+  var d = JSON.parse(raw);
+  setSeed(d.seed);
+  for (var i = 0; i < d.rngDraws; i++) G.rng();
+  G.rngDraws = d.rngDraws;
+  G.scene = d.scene; G.era = d.era;
+  G.pos.x = d.x; G.pos.y = d.y;
+  G.flags = d.flags; G.banks = d.banks; G.mementos = d.mementos;
+  G.bankGiven = d.bankGiven; G.puzzleDone = d.puzzleDone;
+  G.dialogue = null; G.inputQ = []; G.puzzle = null;
+  if (SCENES[G.scene].corridor) resetCorridor();
+  return true;
+}
+
+// ---------------- trial engine (TO THE COURT) ----------------
+var TESTIMONY_JS = { 1: '완벽한 입사였습니다.', 2: '치밀한 준비였습니다.', 3: '계기판이 저를 증명합니다.' };
+var SPOTS = {
+  1: ['re1_vend', 're1_crt', 're1_stamps', 're1_mail'],
+  2: ['re2_desk', 're2_draft', 're2_podium'],
+  3: ['re3_bench', 're3_insp', 're3_memo'],
+};
+function recallDone(r) {
+  var a = SPOTS[r] || [];
+  for (var i = 0; i < a.length; i++) if (!G.flags[a[i]]) return false;
+  return true;
+}
+function benchInteract(obj) {
+  if (G.flags.summon === obj.id) {
+    delete G.flags.summon;
+    G._idleF = 0;
+    var r = G.flags.round;
+    if (G.flags.phase === 'question') { startDialogue('r' + r + '.q'); return; }
+    if (G.flags.phase === 'ruling') { startDialogue('r' + r + '.j'); return; }
+  }
+  startDialogue('court.bench.idle');
+}
+function mailInteract(obj) {
+  var v = (G.flags.mail_visits || 0) + 1;
+  if (v > 3) v = 3;
+  G.flags.mail_visits = v;
+  G.flags.re1_mail = true;
+  G.bankGiven[obj.id] = true;
+  startDialogue('re1.mail' + v);
+}
+function updateTrial(moved) {
+  if (!G.dialogue && G.flags.drive) {
+    var n = G.flags.drive;
+    delete G.flags.drive;
+    startDialogue(n);
+    return;
+  }
+  if (!G.dialogue && G.flags.phase === 'recall') {
+    var r = G.flags.round;
+    if (recallDone(r)) { G.flags.phase = 'rating'; startDialogue('r' + r + '.rate'); return; }
+  }
+  if (G.scene === 'lobby') {
+    if (G.pos.x >= 18 * TILE) G._titleShown = true;
+    if (G.pos.x >= 41 * TILE) enterScene('court', 3, 8);
+  }
+  if (G.flags.summon && !G.dialogue) {
+    if (moved > 0.01) { G._idleF = 0; }
+    else {
+      G._idleF = (G._idleF || 0) + 1;
+      if (G._idleF >= 300) {
+        G._idleF = 0;
+        G._lastEvent = 'court.delay';
+        startDialogue('court.delay');
+      }
+    }
+  }
+  if (G.flags.r2_rated && !G.flags._bearDone && G.scene === 'court') {
+    if (G._bearF === undefined) G._bearF = 240;
+    if (G._bearF > 0) {
+      G._bearF--;
+      var bo = findObject('bear');
+      if (bo) bo.x = 2 + (240 - G._bearF) * (30 / 240);
+    } else {
+      G.flags._bearDone = true;
+      var bo2 = findObject('bear');
+      if (bo2) bo2.x = -5;
+    }
+  }
+  if (G._stampF > 0) G._stampF--;
+}
+function setRoundState(r) {
+  G.flags.entered_lobby = true;
+  G.flags.entered_court = true;
+  G.flags.round = r;
+  G.flags.stamps = 1896 + r;
+  delete G.flags.summon;
+  delete G.flags.drive;
+  delete G.flags.ep3_verdict;
+  delete G.flags.ep3_done;
+  for (var k = 1; k <= 3; k++) {
+    var spots = SPOTS[k];
+    for (var i = 0; i < spots.length; i++) {
+      if (k < r) G.flags[spots[i]] = true; else delete G.flags[spots[i]];
+    }
+    if (k < r) G.flags['r' + k + '_rated'] = true; else delete G.flags['r' + k + '_rated'];
+  }
+  if (r > 1) G.flags.mail_visits = 3; else delete G.flags.mail_visits;
+  if (r === 3) G.flags._bearDone = true; else delete G.flags._bearDone;
+  enterScene('court', 5, 8);
+  startDialogue('r' + r + '.open');
+}
+function drawCourtHUD() {
+  if (G._title) return;
+  if (G._bearF > 0) {
+    cxm.fillStyle = 'rgba(6,8,12,0.55)';
+    cxm.fillRect(0, 0, VW, VH);
+    cxm.fillStyle = PAL.paper;
+    cxm.font = '8px monospace';
+    cxm.fillText('『정전 — 원인: 조사 중 (복구팀이 원인과 동일)』', 100, 40);
+  }
+  var st = String(G.flags.stamps !== undefined ? G.flags.stamps : 1896);
+  cxm.fillStyle = 'rgba(16,20,26,0.6)';
+  cxm.fillRect(6, 6, 96, 14);
+  cxm.strokeStyle = PAL.rust;
+  cxm.strokeRect(6, 6, 96, 14);
+  cxm.fillStyle = PAL.paper;
+  cxm.font = '7px monospace';
+  cxm.fillText('반려 누계 ' + st[0] + ',' + st.slice(1), 11, 16);
+  cxm.fillStyle = 'rgba(16,20,26,0.6)';
+  cxm.fillRect(VW - 130, 30, 122, 16);
+  cxm.strokeStyle = PAL.amber;
+  cxm.strokeRect(VW - 130, 30, 122, 16);
+  var gw = Math.min(100, G._gauge) / 100 * 114;
+  cxm.fillStyle = 'rgba(217,160,91,0.45)';
+  cxm.fillRect(VW - 126, 33, gw, 10);
+  cxm.fillStyle = PAL.gold;
+  cxm.fillText('승소 확률 ' + G._gauge.toFixed(2) + '%', VW - 126, 41);
+  if (G.scene === 'court' && (G.flags.round || 0) >= 1 && !G.flags.ep3_verdict) {
+    var tst = TESTIMONY_JS[G.flags.round];
+    if (tst) {
+      cxm.fillStyle = 'rgba(16,20,26,0.72)';
+      cxm.fillRect(110, 6, 250, 14);
+      cxm.strokeStyle = PAL.teal;
+      cxm.strokeRect(110, 6, 250, 14);
+      cxm.fillStyle = PAL.crt;
+      cxm.fillText('증언: 「' + tst + '」', 118, 16);
+    }
+  }
+  if (G._stampF > 0) {
+    var sc2 = 1 + G._stampF / 24;
+    cxm.save();
+    cxm.translate(VW / 2, VH / 2 - 20);
+    cxm.rotate(-0.12);
+    cxm.globalAlpha = Math.min(1, (24 - G._stampF) / 6 + 0.2);
+    cxm.strokeStyle = PAL.red;
+    cxm.lineWidth = 2;
+    cxm.strokeRect(-44 * sc2, -16 * sc2, 88 * sc2, 32 * sc2);
+    cxm.fillStyle = PAL.red;
+    cxm.font = 'bold ' + Math.round(16 * sc2) + 'px monospace';
+    cxm.textAlign = 'center';
+    cxm.fillText(G._lastStamp && G._lastStamp.official ? '반 려' : '기 각', 0, 6 * sc2);
+    cxm.restore();
+    cxm.textAlign = 'left';
+    cxm.lineWidth = 1;
+    cxm.globalAlpha = 1;
+  }
+  if (G.scene === 'lobby' && G._titleShown) {
+    G._titleF = (G._titleF || 0) + 1;
+    var ta = Math.min(1, G._titleF / 90);
+    cxm.globalAlpha = ta;
+    cxm.fillStyle = PAL.gold;
+    cxm.font = 'bold 26px monospace';
+    cxm.textAlign = 'center';
+    cxm.fillText('TO THE COURT', VW / 2, 84);
+    cxm.font = '9px monospace';
+    cxm.fillStyle = PAL.paper;
+    cxm.fillText('Episode 3: 각주 0개의 재판', VW / 2, 102);
+    cxm.textAlign = 'left';
+    cxm.globalAlpha = 1;
+  }
+}
+
+// ---------------- state hash ----------------
+function stateHash() {
+  var fl = [];
+  for (var k in G.flags) if (k[0] !== '_') fl.push(k + '=' + G.flags[k]);
+  fl.sort();
+  var s = [G.scene, G.era, Math.round(G.pos.x * 100) / 100, Math.round(G.pos.y * 100) / 100,
+           G.banks.mem0, G.banks.mem4, G.banks.mem12,
+           G.mementos.slice().sort().join(','), fl.join('|')].join('#');
+  return fnv(s);
+}
+
+// ---------------- autoplay bot ----------------
+function botTick() {
+  if (G.dialogue) { stepDialogue(); return; }
+  if (G.scene === 'lobby') { G.inputQ = [{ move: 'R', frames: 4 }]; return; }
+  var target = null;
+  if (G.scene === 'court') {
+    if (G.flags.summon) target = findObject(G.flags.summon);
+    if (!target) return;
+  } else {
+    var sc = sceneDef();
+    for (var i = 0; i < sc.objects.length; i++) {
+      var o = sc.objects[i];
+      if ((o.kind === 'npc' || o.kind === 'mail') && !G.bankGiven[o.id]) { target = o; break; }
+    }
+    if (!target) return;
+  }
+  var dx = target.x * TILE - G.pos.x, dy = target.y * TILE - G.pos.y;
+  if (Math.abs(dx) + Math.abs(dy) <= TILE * 1.4) { interactObject(target); return; }
+  if (Math.abs(dx) > 2) G.inputQ = [{ move: dx > 0 ? 'R' : 'L', frames: 2 }];
+  else G.inputQ = [{ move: dy > 0 ? 'D' : 'U', frames: 2 }];
+}
+function autoplay(maxFrames) {
+  var start = G.frame;
+  G.ffMode = true;
+  while (G.frame - start < maxFrames) {
+    if (G.flags.ep3_done) return true;
+    botTick();
+    update();
+  }
+  return !!G.flags.ep3_done;
+}
+
+// ---------------- live input (human play) ----------------
+var live = { keys: true, left: false, right: false, up: false, down: false, run: false };
+function chooseOption(i) {
+  var d = G.dialogue;
+  if (!d || !d.choosing) return;
+  var opts = d.choosing.opts;
+  var pick = opts[i] ? i : 0;
+  d.choosing = null; d.waiting = false;
+  d.nodeId = opts[pick][1]; d.stepIdx = 0;
+  stepDialogue();
+}
+function advanceDialogue() {   // the single user-input path into dialogue
+  var d = G.dialogue;
+  if (!d) return;
+  if (d.choosing) { chooseOption(d.choosing.sel); return; }
+  if (d.hold > 0) { d.hold = 0; return; }  // finish typewriter / skip pause
+  d.waiting = false;
+  stepDialogue();
+}
+addEventListener('keydown', function (e) {
+  if (G._title) {
+    G._title = false;
+    e.preventDefault();
+    if ((e.key === 'e' || e.key === ' ' || e.key === 'Enter') && G.dialogue) {
+      advanceDialogue();
+    }
+    return;
+  }
+  if (e.key === 'm' || e.key === 'M' || e.key === 'Escape') {
+    G._saveMenu = !G._saveMenu;
+    e.preventDefault();
+    return;
+  }
+  if (G._saveMenu) {
+    if (e.key === 'ArrowUp' || e.key === 'w') {
+      G._saveSlotSel = Math.max(1, G._saveSlotSel - 1);
+      e.preventDefault(); return;
+    }
+    if (e.key === 'ArrowDown' || e.key === 's') {
+      G._saveSlotSel = Math.min(3, G._saveSlotSel + 1);
+      e.preventDefault(); return;
+    }
+    if (e.key === 's' || e.key === 'S' || e.key === 'Enter') {
+      saveSlot(G._saveSlotSel);
+      e.preventDefault(); return;
+    }
+    if (e.key === 'l' || e.key === 'L') {
+      loadSlot(G._saveSlotSel);
+      G._saveMenu = false;
+      e.preventDefault(); return;
+    }
+    e.preventDefault();
+    return;
+  }
+  if (G.dialogue && G.dialogue.choosing) {
+    var chs = G.dialogue.choosing, cn = chs.opts.length;
+    if (e.key === 'ArrowUp' || e.key === 'w') chs.sel = (chs.sel + cn - 1) % cn;
+    if (e.key === 'ArrowDown' || e.key === 's') chs.sel = (chs.sel + 1) % cn;
+  }
+  if (e.key === 'ArrowLeft' || e.key === 'a') live.left = true;
+  if (e.key === 'ArrowRight' || e.key === 'd') live.right = true;
+  if (e.key === 'ArrowUp' || e.key === 'w') live.up = true;
+  if (e.key === 'ArrowDown' || e.key === 's') live.down = true;
+  if (e.key === 'Shift') live.run = true;
+  if (e.key === 'e' || e.key === ' ' || e.key === 'Enter') {
+    e.preventDefault();
+    if (e.repeat) return;                  // held key must not machine-gun lines
+    if (G.puzzle && G.puzzle.active) return;
+    if (G.dialogue) advanceDialogue();
+    else { var o = nearestObject(); if (o) interactObject(o); }
+  }
+});
+addEventListener('keyup', function (e) {
+  if (e.key === 'ArrowLeft' || e.key === 'a') live.left = false;
+  if (e.key === 'ArrowRight' || e.key === 'd') live.right = false;
+  if (e.key === 'ArrowUp' || e.key === 'w') live.up = false;
+  if (e.key === 'ArrowDown' || e.key === 's') live.down = false;
+  if (e.key === 'Shift') live.run = false;
+});
+// mouse: click a puzzle cell / advance dialogue
+var cv = document.getElementById('view');
+cv.addEventListener('mousedown', function (e) {
+  if (G._title) { G._title = false; return; }
+  var r = cv.getBoundingClientRect();
+  var mx = (e.clientX - r.left) * (VW / r.width);
+  var my = (e.clientY - r.top) * (VH / r.height);
+
+  if (G._saveMenu) {
+    if (my >= 46 && my <= 84) { G._saveSlotSel = 1; saveSlot(1); }
+    else if (my >= 90 && my <= 128) { G._saveSlotSel = 2; saveSlot(2); }
+    else if (my >= 134 && my <= 172) { G._saveSlotSel = 3; saveSlot(3); }
+    else { G._saveMenu = false; }
+    return;
+  }
+
+  // Check Save HUD button on top right
+  if (mx >= VW - 48 && my <= 24) {
+    G._saveMenu = !G._saveMenu;
+    return;
+  }
+
+  // 승소 확률 게이지 — 두드림을 입력으로 인식 (+1)
+  if (mx >= VW - 130 && mx <= VW - 8 && my >= 30 && my <= 46) {
+    G._gauge += 1;
+    return;
+  }
+
+  if (G.puzzle && G.puzzle.active) {
+    for (var pi = 0; pi < 15; pi++) {
+      var px = 110 + (pi % 5) * 54, py = 62 + Math.floor(pi / 5) * 44;
+      if (mx >= px && mx <= px + 46 && my >= py && my <= py + 36) {
+        pressPuzzle(G.puzzle.grid, pi);
+        if (puzzleSolved(G.puzzle.grid)) {
+          G.puzzle.active = false;
+          G.puzzleDone[G.puzzle.mem] = true;
+          var sc2 = sceneDef(), memObj = null;
+          for (var q = 0; q < sc2.objects.length; q++)
+            if (sc2.objects[q].kind === 'memento' && sc2.objects[q].mem === G.puzzle.mem) memObj = sc2.objects[q];
+          G.puzzle = null;
+          if (memObj) interactObject(memObj);
+        }
+        return;
+      }
+    }
+    return;
+  }
+  if (G.dialogue) {
+    if (G.dialogue.choosing) {
+      var chr = G.dialogue.choosing, cnr = chr.opts.length;
+      var bh = cnr * 16 + 10, by = VH - 76 - bh;
+      for (var ci = 0; ci < cnr; ci++) {
+        var oy = by + 8 + ci * 16;
+        if (my >= oy - 4 && my <= oy + 14) { chooseOption(ci); return; }
+      }
+    } else {
+      advanceDialogue();
+    }
+  }
+});
+
+// touch input handling (W2)
+cv.addEventListener('touchstart', function (e) {
+  e.preventDefault();
+  if (G._title) { G._title = false; return; }
+  var r = cv.getBoundingClientRect();
+  var touch = e.touches[0];
+  var mx = (touch.clientX - r.left) * (VW / r.width);
+  var my = (touch.clientY - r.top) * (VH / r.height);
+
+  if (G._saveMenu) {
+    if (my >= 46 && my <= 84) { G._saveSlotSel = 1; saveSlot(1); }
+    else if (my >= 90 && my <= 128) { G._saveSlotSel = 2; saveSlot(2); }
+    else if (my >= 134 && my <= 172) { G._saveSlotSel = 3; saveSlot(3); }
+    else { G._saveMenu = false; }
+    return;
+  }
+
+  // Top-right SAVE button
+  if (mx >= VW - 48 && my <= 24) {
+    G._saveMenu = !G._saveMenu;
+    return;
+  }
+
+  if (G.dialogue) {
+    if (G.dialogue.choosing) {
+      var chr = G.dialogue.choosing, cnr = chr.opts.length;
+      var bh = cnr * 16 + 10, by = VH - 76 - bh;
+      for (var ci = 0; ci < cnr; ci++) {
+        var oy = by + 8 + ci * 16;
+        if (my >= oy - 6 && my <= oy + 16) { chooseOption(ci); return; }
+      }
+    } else {
+      if (G.frame - (G._lastTouchAdvanceFrame || 0) < 8) return;
+      G._lastTouchAdvanceFrame = G.frame;
+      advanceDialogue();
+    }
+    return;
+  }
+
+  // Bottom-right [E] interact button
+  if (mx >= VW - 46 && my >= VH - 46) {
+    var o = nearestObject();
+    if (o) interactObject(o);
+    return;
+  }
+
+  // RUN toggle button
+  if (mx >= 66 && mx <= 98 && my >= VH - 46) {
+    live.run = !live.run;
+    return;
+  }
+
+  // Virtual D-pad touch
+  if (mx <= 60 && my >= VH - 60) {
+    var dx = mx - 35, dy = my - (VH - 35);
+    live.left = dx < -6;
+    live.right = dx > 6;
+    live.up = dy < -6;
+    live.down = dy > 6;
+  }
+}, { passive: false });
+
+cv.addEventListener('touchmove', function (e) {
+  e.preventDefault();
+  if (G._title || G._saveMenu || G.dialogue) return;
+  var r = cv.getBoundingClientRect();
+  var touch = e.touches[0];
+  var mx = (touch.clientX - r.left) * (VW / r.width);
+  var my = (touch.clientY - r.top) * (VH / r.height);
+  if (mx <= 60 && my >= VH - 60) {
+    var dx = mx - 35, dy = my - (VH - 35);
+    live.left = dx < -6;
+    live.right = dx > 6;
+    live.up = dy < -6;
+    live.down = dy > 6;
+  }
+}, { passive: false });
+
+cv.addEventListener('touchend', function (e) {
+  if (e.touches.length === 0) {
+    live.left = false; live.right = false; live.up = false; live.down = false;
+  }
+}, { passive: false });
+
+// ================================================================
+// AUDIO — 〈각주를 위하여〉 (For Footnotes). Web Audio, zero files.
+// Arrangement = f(era footnote count): 0=musicbox solo, 4=+bass,
+// 12=+arpeggio, 7.5F=full 47-voice era. Render-side only — never
+// touches game logic. Starts on first user gesture (autoplay policy).
+// ================================================================
+var AU = { ctx: null, master: null, muted: false, beat: 0, nextT: 0,
+           lastEra: 'x', lastFlash: -1, lastSayKey: '', lastStepBucket: 0,
+           hum: null };
+var BPM = 72, BEAT = 60 / BPM;      // quarter = 0.833s
+var NOTE = { A2:110.0, E3:164.81, A3:220.0, C4:261.63, D4:293.66, E4:329.63,
+             F4:349.23, G4:392.0, A4:440.0, B4:493.88, C5:523.25, D5:587.33, E5:659.26 };
+// two 4-bar phrases, quarter-note lead (0 = rest)
+var LEAD = ['A4','C5','B4','E5', 'C5','B4','A4',0, 'F4','A4','G4','C5', 'A4','G4','E4',0];
+var ARP  = ['A3','C4','E4','C4'];   // eighths, era>=12
+var COUNTER = ['E4','D4','C4','B4','C4','D4','E4','G4'];  // half-notes, 7.5F
+
+function auInit() {
+  if (AU.ctx) return;
+  try {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    AU.ctx = new AC();
+    AU.master = AU.ctx.createGain();
+    AU.master.gain.value = 0.32;
+    AU.master.connect(AU.ctx.destination);
+    AU.nextT = AU.ctx.currentTime + 0.1;
+  } catch (e) { AU.ctx = null; }
+}
+function auNow() { return AU.ctx ? AU.ctx.currentTime : 0; }
+
+function voice(freq, t, dur, type, gainV, filterHz, detune) {
+  if (!AU.ctx || AU.muted || !freq) return;
+  var o = AU.ctx.createOscillator(), g = AU.ctx.createGain();
+  o.type = type; o.frequency.value = freq;
+  if (detune) o.detune.value = detune;
+  var dst = AU.master;
+  if (filterHz) {
+    var f = AU.ctx.createBiquadFilter();
+    f.type = 'lowpass'; f.frequency.value = filterHz;
+    o.connect(g); g.connect(f); f.connect(dst);
+  } else { o.connect(g); g.connect(dst); }
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(gainV, t + 0.015);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.start(t); o.stop(t + dur + 0.05);
+}
+function musicbox(n, t, g) { if (n) { voice(NOTE[n], t, 1.4, 'sine', g, 0, 0); voice(NOTE[n] * 3, t, 0.5, 'sine', g * 0.18, 0, 4); } }
+function piano(n, t, g) { if (n) { voice(NOTE[n], t, 1.1, 'triangle', g, 1800, 0); voice(NOTE[n], t, 1.1, 'triangle', g * 0.5, 1800, 7); } }
+function bassN(n, t, g) { if (n) voice(NOTE[n], t, 1.6, 'triangle', g, 500, 0); }
+function cello(n, t, g) { if (n) { voice(NOTE[n], t, BEAT * 2.1, 'sawtooth', g, 620, 0); } }
+
+function noiseBurst(t, dur, gainV, hz) {
+  if (!AU.ctx || AU.muted) return;
+  var len = Math.max(1, Math.floor(AU.ctx.sampleRate * dur));
+  var buf = AU.ctx.createBuffer(1, len, AU.ctx.sampleRate);
+  var d = buf.getChannelData(0);
+  for (var i = 0; i < len; i++) d[i] = (artRng() * 2 - 1) * (1 - i / len);   // 오디오까지 결정론
+  var src = AU.ctx.createBufferSource(); src.buffer = buf;
+  var f = AU.ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = hz; f.Q.value = 1.2;
+  var g = AU.ctx.createGain(); g.gain.value = gainV;
+  src.connect(f); f.connect(g); g.connect(AU.master);
+  src.start(t);
+}
+function sfxStep() { noiseBurst(auNow(), 0.05, 0.10, sceneDef().low ? 500 : 900); }
+function sfxBlip() { voice(660, auNow(), 0.07, 'square', 0.05, 1400, 0); }
+function sfxBell() { voice(880, auNow(), 0.7, 'sine', 0.14, 0, 0); voice(1320, auNow(), 0.5, 'sine', 0.07, 0, 3); }
+function sfxStamp() {
+  if (!AU.ctx || AU.muted) return;
+  var t = auNow();
+  var o = AU.ctx.createOscillator(), g = AU.ctx.createGain();
+  o.type = 'sine'; o.frequency.setValueAtTime(140, t);
+  o.frequency.exponentialRampToValueAtTime(40, t + 0.18);
+  g.gain.setValueAtTime(0.5, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+  o.connect(g); g.connect(AU.master); o.start(t); o.stop(t + 0.25);
+  noiseBurst(t, 0.08, 0.2, 700);
+}
+function sfxDive() {
+  if (!AU.ctx || AU.muted) return;
+  var t = auNow();
+  noiseBurst(t, 0.9, 0.28, 300);
+  voice(220, t, 0.9, 'sawtooth', 0.10, 900, 0);
+  voice(110, t + 0.1, 0.8, 'sawtooth', 0.08, 400, 0);
+}
+
+function humSet(on, warm) {
+  if (!AU.ctx) return;
+  if (on && !AU.hum) {
+    var o1 = AU.ctx.createOscillator(), o2 = AU.ctx.createOscillator(), g = AU.ctx.createGain();
+    o1.type = 'sine'; o1.frequency.value = warm ? 90 : 100;
+    o2.type = 'sine'; o2.frequency.value = warm ? 135 : 120;
+    g.gain.value = 0.018;
+    o1.connect(g); o2.connect(g); g.connect(AU.master);
+    o1.start(); o2.start();
+    AU.hum = { o1: o1, o2: o2, g: g };
+  }
+  if (!on && AU.hum) {
+    try { AU.hum.o1.stop(); AU.hum.o2.stop(); } catch (e) {}
+    AU.hum = null;
+  }
+}
+
+function scheduleBeat(idx, t) {
+  var era = G.era;
+  var q = idx % 16;                       // position in the 16-quarter loop
+  var lead = LEAD[q];
+  if (era < 0) {                          // reality frame: faint, sparse
+    if (q % 4 === 0) musicbox(lead || 'A4', t, 0.035);
+    return;
+  }
+  if (era === 7.5) {                      // full 47-voice arrangement
+    piano(lead, t, 0.16);
+    if (lead) musicbox(lead, t, 0.06);                          // doubled octave sparkle
+    bassN(q % 4 === 0 ? 'A2' : (q % 4 === 2 ? 'E3' : 0), t, 0.14);
+    for (var e8 = 0; e8 < 2; e8++)                              // arpeggio eighths
+      piano(ARP[(idx * 2 + e8) % 4], t + e8 * BEAT / 2, 0.05);
+    if (q % 2 === 0) cello(COUNTER[(q / 2) % 8], t, 0.05);      // counter line
+    if (lead) piano(lead === 'E5' ? 'D5' : 'B4', t + BEAT * 0.12, 0.03);  // grace
+    return;
+  }
+  // era 0 / 4 / 12 ladders
+  musicbox(lead, t, 0.11);
+  if (era >= 4) bassN(q % 4 === 0 ? 'A2' : (q % 4 === 2 ? 'E3' : 0), t, 0.10);
+  if (era >= 12)
+    for (var e2 = 0; e2 < 2; e2++)
+      piano(ARP[(idx * 2 + e2) % 4], t + e2 * BEAT / 2, 0.045);
+}
+
+function audioTick() {
+  if (!AU.ctx || AU.muted) return;
+  // scene-driven ambient
+  var sc = sceneDef();
+  humSet(sc.era >= 0 && !sc.corridor, sc.era === 7.5 || sc.era === 12);
+  // music scheduler (0.15s lookahead)
+  while (AU.nextT < AU.ctx.currentTime + 0.15) {
+    scheduleBeat(AU.beat, AU.nextT);
+    AU.beat++;
+    AU.nextT += BEAT;
+  }
+  // event SFX (edge-detected from render side; logic untouched)
+  if (G.flags._flash !== undefined && G.flags._flash !== AU.lastFlash) {
+    AU.lastFlash = G.flags._flash; sfxDive();
+  }
+  if (G.dialogue) {
+    var key = G.dialogue.nodeId + '#' + G.dialogue.stepIdx;
+    if (key !== AU.lastSayKey) { AU.lastSayKey = key; sfxBlip(); }
+  }
+  var bucket = Math.floor((G._walkPhase || 0) / 9);
+  if (bucket !== AU.lastStepBucket) { AU.lastStepBucket = bucket; if (bucket > 0) sfxStep(); }
+  // era change: soft bell + reset phrase so each memory re-enters the motif
+  if (G.era !== AU.lastEra) {
+    if (AU.lastEra !== 'x') sfxBell();
+    AU.lastEra = G.era;
+    AU.beat = 0;
+  }
+}
+
+addEventListener('keydown', function au1() { auInit(); if (AU.ctx) removeEventListener('keydown', au1); });
+addEventListener('mousedown', function au2() { auInit(); if (AU.ctx) removeEventListener('mousedown', au2); });
+addEventListener('keydown', function (e) {
+  if (e.key === 'm' || e.key === 'M') { AU.muted = !AU.muted; if (AU.muted) humSet(false); }
+});
+
+// ================================================================
+// ART — procedural atlas. artRng is SEPARATE from game RNG.
+// ================================================================
+var artRng = mulberry32(20260827);
+function mk(w, h) { var c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+function px(g, x, y, w, h, col) { g.fillStyle = col; g.fillRect(x, y, w, h); }
+
+var SPR = {};   // name -> canvas
+
+function buildCharacter(name, coat, trim, opts) {
+  // 4 dirs x 3 frames, 16x24 each -> canvas 48x96 (col=frame,row=dir DRLU)
+  opts = opts || {};
+  var c = mk(48, 96), g = c.getContext('2d');
+  var dirs = ['D', 'R', 'L', 'U'];
+  for (var di = 0; di < 4; di++) {
+    for (var f = 0; f < 3; f++) {
+      var ox = f * 16, oy = di * 24;
+      var bob = f === 1 ? 0 : 1;
+      // legs
+      var lo = f === 0 ? -2 : (f === 2 ? 2 : 0);
+      px(g, ox + 5 + (lo < 0 ? -1 : 0), oy + 19 + bob, 3, 4 - bob, PAL.ink);
+      px(g, ox + 9 + (lo > 0 ? 1 : 0), oy + 19 + bob, 3, 4 - bob, PAL.ink);
+      // coat/body
+      px(g, ox + 4, oy + 10 + bob, 9, 10, coat);
+      px(g, ox + 4, oy + 10 + bob, 9, 2, trim);
+      // arms
+      px(g, ox + 3, oy + 11 + bob + (f === 0 ? 1 : 0), 2, 6, coat);
+      px(g, ox + 12, oy + 11 + bob + (f === 2 ? 1 : 0), 2, 6, coat);
+      // head
+      px(g, ox + 5, oy + 3 + bob, 7, 7, PAL.skin);
+      // hair
+      px(g, ox + 5, oy + 3 + bob, 7, 2, opts.hair || PAL.ink);
+      if (dirs[di] === 'U') px(g, ox + 5, oy + 3 + bob, 7, 6, opts.hair || PAL.ink);
+      // eyes
+      if (dirs[di] === 'D') { px(g, ox + 6, oy + 6 + bob, 1, 1, PAL.ink); px(g, ox + 10, oy + 6 + bob, 1, 1, PAL.ink); }
+      if (dirs[di] === 'R') px(g, ox + 10, oy + 6 + bob, 1, 1, PAL.ink);
+      if (dirs[di] === 'L') px(g, ox + 6, oy + 6 + bob, 1, 1, PAL.ink);
+      // prop
+      if (opts.pad && dirs[di] !== 'U') px(g, ox + 12, oy + 13 + bob, 3, 4, PAL.paper);
+      if (opts.sandwich && dirs[di] === 'D' && f === 1) px(g, ox + 2, oy + 14, 3, 2, PAL.amber);
+    }
+  }
+  SPR[name] = c;
+}
+
+function buildPenguinSheet(era) {
+  var c = mk(48, 96), g = c.getContext('2d');
+  for (var di = 0; di < 4; di++) {
+    for (var f = 0; f < 3; f++) {
+      var ox = f * 16, oy = di * 24;
+      var bob = f === 1 ? 0 : 1;
+      var waddle = f === 0 ? -1 : (f === 2 ? 1 : 0);
+      // feet
+      px(g, ox + 4 + waddle, oy + 20, 4, 2, PAL.amber);
+      px(g, ox + 9 - waddle, oy + 20, 4, 2, PAL.amber);
+      // body
+      px(g, ox + 3, oy + 7 + bob, 11, 13, PAL.ink);
+      // belly (not on back view)
+      if (di !== 3) px(g, ox + 5, oy + 10 + bob, 7, 9, PAL.paper);
+      // flippers
+      px(g, ox + 2, oy + 10 + bob + (f === 0 ? 1 : 0), 2, 6, PAL.ink);
+      px(g, ox + 13, oy + 10 + bob + (f === 2 ? 1 : 0), 2, 6, PAL.ink);
+      // head
+      px(g, ox + 4, oy + 2 + bob, 9, 7, PAL.ink);
+      if (di === 0) { // down: face
+        px(g, ox + 6, oy + 4 + bob, 2, 2, PAL.paper); px(g, ox + 10, oy + 4 + bob, 2, 2, PAL.paper);
+        px(g, ox + 7, oy + 5 + bob, 1, 1, PAL.ink);  px(g, ox + 10, oy + 5 + bob, 1, 1, PAL.ink);
+        px(g, ox + 8, oy + 6 + bob, 2, 2, PAL.amber);
+      }
+      if (di === 1) { px(g, ox + 10, oy + 4 + bob, 2, 2, PAL.paper); px(g, ox + 12, oy + 6 + bob, 2, 1, PAL.amber); }
+      if (di === 2) { px(g, ox + 5, oy + 4 + bob, 2, 2, PAL.paper); px(g, ox + 3, oy + 6 + bob, 2, 1, PAL.amber); }
+
+      // era accessories (Task 6)
+      if (era === 4 && di !== 3) {
+        // True 명패 목걸이 — 백색 소형 패(약 3×2px) + PAL.ink 테두리 1px (법정 시대)
+        px(g, ox + 7, oy + 10 + bob, 3, 1, PAL.ink);
+        px(g, ox + 6, oy + 11 + bob, 5, 4, PAL.ink);
+        px(g, ox + 7, oy + 12 + bob, 3, 2, PAL.paper);
+      } else if (era === 12 && di !== 3) {
+        // Gauge Mk.I — PAL.amber 점(2×2px) + 바늘 1px (부착 직후 시대)
+        px(g, ox + 6, oy + 11 + bob, 5, 5, PAL.ink);
+        px(g, ox + 7, oy + 12 + bob, 3, 3, PAL.amber);
+        px(g, ox + 8, oy + 13 + bob, 1, 2, PAL.paper);
+      }
+    }
+  }
+  return c;
+}
+
+function buildPenguin() {
+  SPR.penguin_sheet   = buildPenguinSheet(0);
+  SPR.penguin4_sheet  = buildPenguinSheet(4);
+  SPR.penguin12_sheet = buildPenguinSheet(12);
+}
+
+function buildProps() {
+  var g, c;
+  function def(name, w, h, draw) { c = mk(w, h); g = c.getContext('2d'); draw(g, w, h); SPR[name] = c; }
+
+  def('desk', 32, 20, function (g) {
+    px(g, 0, 6, 32, 10, PAL.olive); px(g, 0, 6, 32, 2, PAL.paper);
+    px(g, 2, 16, 3, 4, PAL.ink); px(g, 27, 16, 3, 4, PAL.ink);
+    px(g, 4, 0, 12, 8, PAL.ink); px(g, 5, 1, 10, 6, PAL.teal); px(g, 6, 2, 8, 1, PAL.crt);
+    px(g, 20, 3, 8, 4, PAL.paper);
+  });
+  def('lab', 32, 20, function (g) {
+    px(g, 0, 6, 32, 10, PAL.steel); px(g, 0, 6, 32, 2, PAL.paper);
+    px(g, 2, 16, 3, 4, PAL.ink); px(g, 27, 16, 3, 4, PAL.ink);
+    px(g, 5, 1, 8, 6, PAL.amber); px(g, 18, 2, 10, 5, PAL.paper); px(g, 19, 3, 8, 1, PAL.rust);
+  });
+  def('cab', 16, 26, function (g) {
+    px(g, 1, 0, 14, 26, PAL.steel); px(g, 1, 0, 14, 2, PAL.paper);
+    for (var i = 0; i < 4; i++) { px(g, 3, 3 + i * 6, 10, 4, PAL.olive); px(g, 7, 4 + i * 6, 2, 1, PAL.paper); }
+  });
+  def('bench', 40, 14, function (g) {
+    px(g, 0, 2, 40, 6, PAL.rust); px(g, 0, 2, 40, 1, PAL.amber);
+    px(g, 2, 8, 3, 6, PAL.ink); px(g, 35, 8, 3, 6, PAL.ink);
+  });
+  def('podium', 28, 26, function (g) {
+    px(g, 2, 4, 24, 22, PAL.rust); px(g, 0, 0, 28, 6, PAL.amber);
+    px(g, 4, 8, 20, 2, PAL.ink);
+  });
+  def('plant', 14, 20, function (g) {
+    px(g, 4, 14, 6, 6, PAL.rust);
+    px(g, 2, 4, 4, 8, PAL.olive); px(g, 8, 2, 4, 10, PAL.olive); px(g, 5, 0, 4, 12, PAL.olive);
+  });
+  def('papers', 18, 12, function (g) {
+    px(g, 0, 6, 16, 5, PAL.paper); px(g, 3, 3, 14, 5, PAL.paper);
+    px(g, 4, 4, 12, 1, PAL.olive); px(g, 1, 7, 12, 1, PAL.olive);
+  });
+  def('win', 22, 18, function (g) {
+    px(g, 0, 0, 22, 18, PAL.ink);
+    px(g, 2, 2, 18, 14, PAL.night);
+    for (var i = 0; i < 9; i++) px(g, 3 + (i * 7) % 16, 3 + (i * 5) % 12, 1, 1, PAL.paper);
+    px(g, 10, 2, 2, 14, PAL.ink); px(g, 2, 8, 18, 2, PAL.ink);
+  });
+  def('fluo', 30, 8, function (g) {
+    px(g, 0, 0, 30, 3, PAL.ink); px(g, 2, 3, 26, 3, PAL.fluoro);
+  });
+  def('beam', 20, 10, function (g) {
+    px(g, 0, 0, 20, 6, PAL.ink); px(g, 0, 6, 20, 2, PAL.rust);
+  });
+  def('dossier', 22, 30, function (g) {
+    for (var r = 0; r < 6; r++) {
+      px(g, 0, r * 5, 22, 4, r % 2 ? PAL.paper : PAL.amber);
+      px(g, 2, r * 5 + 1, 3, 2, PAL.rust);
+    }
+  });
+  def('pile', 30, 20, function (g) {
+    px(g, 2, 10, 26, 8, PAL.paper); px(g, 0, 14, 30, 5, PAL.paper);
+    px(g, 5, 6, 20, 5, PAL.paper); px(g, 8, 3, 14, 4, PAL.paper);
+    px(g, 10, 12, 8, 3, PAL.rust); px(g, 4, 16, 6, 1, PAL.olive); px(g, 20, 15, 6, 1, PAL.olive);
+  });
+  def('chute', 18, 26, function (g) {
+    px(g, 2, 0, 14, 26, PAL.steel); px(g, 4, 4, 10, 6, PAL.ink);
+    px(g, 5, 5, 8, 3, PAL.shadow); px(g, 4, 14, 10, 2, PAL.paper);
+  });
+  def('crt', 20, 18, function (g) {
+    px(g, 1, 2, 18, 13, PAL.ink); px(g, 3, 4, 14, 9, PAL.teal);
+    px(g, 4, 5, 12, 2, PAL.crt); px(g, 4, 8, 8, 1, PAL.crt);
+    px(g, 7, 15, 6, 3, PAL.ink);
+  });
+  def('stampwall', 24, 22, function (g) {
+    px(g, 0, 0, 24, 22, PAL.paper);
+    for (var i = 0; i < 14; i++) {
+      var xx = 2 + (i * 7) % 19, yy = 2 + Math.floor(i / 3) * 4;
+      px(g, xx, yy, 4, 2, PAL.rust);
+    }
+  });
+  def('vend', 20, 30, function (g) {
+    px(g, 1, 0, 18, 30, PAL.rust); px(g, 3, 2, 14, 12, PAL.paper);
+    px(g, 4, 3, 12, 3, PAL.amber); px(g, 4, 8, 5, 4, PAL.teal);
+    px(g, 3, 18, 14, 5, PAL.ink); px(g, 5, 19, 10, 3, PAL.fluoro);
+  });
+  def('tray', 20, 12, function (g) {
+    px(g, 0, 4, 20, 8, PAL.steel); px(g, 2, 2, 16, 4, PAL.shadow);
+  });
+  def('folder', 18, 14, function (g) {
+    px(g, 0, 3, 18, 11, PAL.amber); px(g, 0, 3, 8, 3, PAL.gold);
+    px(g, 3, 8, 12, 1, PAL.ink); px(g, 3, 10, 9, 1, PAL.ink);
+  });
+  def('dive', 22, 30, function (g) {
+    px(g, 1, 0, 20, 30, PAL.ink); px(g, 3, 2, 16, 26, PAL.night);
+    px(g, 5, 4, 12, 22, PAL.teal); px(g, 8, 8, 6, 14, PAL.crt);
+    px(g, 9, 10, 4, 2, PAL.paper); px(g, 9, 14, 4, 2, PAL.paper); px(g, 9, 18, 4, 2, PAL.paper);
+  });
+  def('paper1', 14, 10, function (g) {
+    px(g, 0, 0, 14, 10, PAL.paper); px(g, 2, 2, 10, 1, PAL.ink); px(g, 2, 4, 8, 1, PAL.ink);
+    px(g, 2, 7, 5, 2, PAL.rust);
+  });
+  def('mic', 10, 20, function (g) {
+    px(g, 4, 0, 3, 4, PAL.steel); px(g, 5, 4, 1, 12, PAL.ink); px(g, 2, 16, 7, 3, PAL.ink);
+  });
+  def('stampbrk', 14, 12, function (g) {
+    px(g, 1, 6, 5, 6, PAL.rust); px(g, 8, 3, 5, 6, PAL.rust);
+    px(g, 5, 2, 3, 3, PAL.amber);
+  });
+  def('report', 16, 12, function (g) {
+    px(g, 1, 1, 14, 11, PAL.paper); px(g, 2, 3, 12, 1, PAL.ink); px(g, 2, 5, 12, 1, PAL.ink);
+    px(g, 2, 7, 12, 1, PAL.ink); px(g, 2, 9, 8, 1, PAL.ink);
+  });
+  def('gavel', 18, 14, function (g) {
+    px(g, 2, 2, 8, 5, PAL.rust); px(g, 9, 4, 8, 2, PAL.amber); px(g, 1, 10, 12, 3, PAL.olive);
+  });
+  def('plaque', 18, 10, function (g) {
+    px(g, 0, 0, 18, 10, PAL.gold); px(g, 2, 2, 14, 6, PAL.ink);
+    px(g, 4, 4, 2, 2, PAL.gold); px(g, 8, 4, 2, 2, PAL.gold); px(g, 12, 4, 2, 2, PAL.gold);
+  });
+  def('circuit', 16, 12, function (g) {
+    px(g, 0, 0, 16, 12, PAL.olive); px(g, 2, 2, 12, 8, PAL.teal);
+    px(g, 4, 4, 2, 2, PAL.gold); px(g, 9, 6, 3, 1, PAL.gold); px(g, 6, 8, 1, 2, PAL.gold);
+  });
+  def('memo', 12, 10, function (g) {
+    px(g, 0, 0, 12, 10, PAL.fluoro); px(g, 2, 2, 8, 1, PAL.ink); px(g, 2, 5, 8, 1, PAL.ink);
+  });
+  def('trees', 20, 16, function (g) {
+    for (var i = 0; i < 3; i++) {
+      px(g, 1 + i * 7, 2, 5, 10, i === 1 ? PAL.rust : PAL.olive);
+      px(g, 3 + i * 7, 12, 1, 4, PAL.ink);
+    }
+  });
+  def('folders3', 22, 12, function (g) {
+    for (var i = 0; i < 3; i++) px(g, 1 + i * 7, 2, 6, 9, PAL.steel);
+    px(g, 2, 4, 4, 1, PAL.paper); px(g, 9, 4, 4, 1, PAL.paper); px(g, 16, 4, 4, 1, PAL.paper);
+  });
+  def('sketch', 14, 12, function (g) {
+    px(g, 0, 0, 14, 12, PAL.paper); px(g, 2, 3, 10, 4, PAL.ink);
+    px(g, 3, 4, 6, 2, PAL.gold);
+  });
+  def('lockdoor', 20, 30, function (g) {
+    px(g, 1, 0, 18, 30, PAL.rust); px(g, 3, 2, 14, 26, PAL.shadow);
+    px(g, 8, 12, 4, 6, PAL.gold); px(g, 9, 14, 2, 2, PAL.shadow);
+    px(g, 4, 4, 12, 2, PAL.paper);
+  });
+  def('gauge', 20, 16, function (g) {
+    px(g, 0, 2, 20, 12, PAL.ink); px(g, 2, 4, 16, 8, PAL.paper);
+    px(g, 3, 5, 10, 6, PAL.gold); px(g, 10, 5, 1, 6, PAL.rust);
+  });
+  def('orb', 16, 16, function (g) {
+    px(g, 4, 1, 8, 14, PAL.gold); px(g, 1, 4, 14, 8, PAL.gold);
+    px(g, 5, 3, 3, 3, PAL.paper);
+  });
+}
+
+// noise tile for film grain (art rng — build once)
+var GRAIN = mk(96, 96);
+(function () {
+  var g = GRAIN.getContext('2d'), d = g.createImageData(96, 96);
+  for (var i = 0; i < d.data.length; i += 4) {
+    var v = Math.floor(artRng() * 255);
+    d.data[i] = v; d.data[i + 1] = v; d.data[i + 2] = v; d.data[i + 3] = 22;
+  }
+  g.putImageData(d, 0, 0);
+})();
+
+buildCharacter('kkos', PAL.ink, PAL.steel, { pad: true, hair: PAL.steel });
+buildCharacter('newbie', PAL.olive, PAL.fluoro, { sandwich: true, hair: PAL.ink });
+buildPenguin();
+buildProps();
+SPR.bear = (function () {
+  var c = mk(26, 30), g = c.getContext('2d');
+  px(g, 3, 8, 20, 16, '#dfe6ea'); px(g, 1, 12, 4, 8, '#dfe6ea');
+  px(g, 21, 12, 4, 8, '#dfe6ea'); px(g, 5, 2, 6, 6, '#dfe6ea');
+  px(g, 15, 2, 6, 6, '#dfe6ea'); px(g, 8, 24, 4, 5, '#cfd6da');
+  px(g, 15, 24, 4, 5, '#cfd6da'); px(g, 9, 12, 2, 2, PAL.ink);
+  px(g, 15, 12, 2, 2, PAL.ink); px(g, 11, 16, 4, 2, PAL.ink);
+  px(g, 20, 18, 6, 3, PAL.paper); px(g, 21, 19, 4, 1, PAL.rust);
+  return c;
+})();
+SPR.insp = (function () {
+  var c = mk(16, 24), g = c.getContext('2d');
+  px(g, 4, 2, 8, 7, PAL.skin); px(g, 4, 1, 8, 3, PAL.ink);
+  px(g, 6, 5, 1, 1, PAL.ink); px(g, 9, 5, 1, 1, PAL.ink);
+  px(g, 3, 9, 10, 11, PAL.olive); px(g, 5, 11, 6, 3, PAL.paper);
+  px(g, 4, 20, 3, 4, PAL.ink); px(g, 9, 20, 3, 4, PAL.ink);
+  return c;
+})();
+
+// floor painters
+function drawFloor(cx2, sc, camX, camY) {
+  var style = sc.floor;
+  cx2.fillStyle = sc.tint;
+  cx2.fillRect(0, 0, VW, VH);
+  var x0 = Math.floor(camX / TILE), y0 = Math.floor(camY / TILE);
+  for (var ty = y0; ty <= y0 + Math.ceil(VH / TILE); ty++) {
+    for (var tx = x0; tx <= x0 + Math.ceil(VW / TILE); tx++) {
+      if (tx < 0 || ty < 0 || tx >= sc.w || ty >= sc.h) continue;
+      var sx = tx * TILE - camX, sy = ty * TILE - camY;
+      var n = h2(tx, ty * 7 + (sc.era * 13 | 0));
+      if (style === 'lino') {
+        if ((tx + ty) % 2 === 0) { cx2.fillStyle = 'rgba(16,20,26,0.10)'; cx2.fillRect(sx, sy, TILE, TILE); }
+        if (n > 0.93) { cx2.fillStyle = 'rgba(232,226,208,0.06)'; cx2.fillRect(sx + 3, sy + 3, 2, 2); }
+      } else if (style === 'wood') {
+        cx2.fillStyle = 'rgba(16,20,26,0.12)'; cx2.fillRect(sx, sy + TILE - 2, TILE, 1);
+        if (n > 0.85) { cx2.fillStyle = 'rgba(16,20,26,0.15)'; cx2.fillRect(sx + 2, sy + 5, 9, 1); }
+      } else if (style === 'terra') {
+        if (n > 0.72) { cx2.fillStyle = 'rgba(232,226,208,0.10)'; cx2.fillRect(sx + (n * 11 | 0) % 12, sy + (n * 29 | 0) % 12, 2, 2); }
+        if (n < 0.10) { cx2.fillStyle = 'rgba(139,58,46,0.15)'; cx2.fillRect(sx + 6, sy + 8, 2, 2); }
+      } else if (style === 'dust') {
+        if (n > 0.8) { cx2.fillStyle = 'rgba(16,20,26,0.18)'; cx2.fillRect(sx + (n * 13 | 0) % 13, sy + (n * 31 | 0) % 13, 2, 1); }
+      } else {
+        if ((tx + ty) % 2 === 0) { cx2.fillStyle = 'rgba(16,20,26,0.07)'; cx2.fillRect(sx, sy, TILE, TILE); }
+      }
+      // memory-edge dithering (unfinished recollection)
+      var edge = Math.min(tx, ty, sc.w - 1 - tx, sc.h - 1 - ty);
+      if (edge <= 2 && sc.era >= 0) {
+        var th = edge === 0 ? 0.15 : (edge === 1 ? 0.55 : 0.8);
+        if (h2(tx * 3 + 1, ty * 5 + 2) > th) {
+          cx2.fillStyle = PAL.shadow;
+          if ((tx + ty) % 2 === 0) cx2.fillRect(sx, sy, TILE, TILE);
+          else { cx2.fillRect(sx, sy, 8, 8); cx2.fillRect(sx + 8, sy + 8, 8, 8); }
+        }
+      }
+    }
+  }
+}
+
+// ---------------- render ----------------
+var cxm = cv.getContext('2d');
+var lightCv = mk(VW, VH), lightCx = lightCv.getContext('2d');
+var fpsCount = 0, fpsValue = 60, fpsWindowStart = performance.now();
+
+function drawSprite(name, x, y) {
+  var s = SPR[name];
+  if (!s) return;
+  cxm.drawImage(s, Math.round(x - s.width / 2), Math.round(y - s.height + 6));
+}
+
+function charFrame(sheet, facing, phase, x, y, stoop) {
+  var di = facing === 'D' ? 0 : facing === 'R' ? 1 : facing === 'L' ? 2 : 3;
+  var f = phase > 0 ? (Math.floor(phase / 8) % 2 === 0 ? 0 : 2) : 1;
+  var sh = stoop ? 20 : 24;
+  cxm.drawImage(sheet, f * 16, di * 24 + (stoop ? 3 : 0), 16, sh,
+                Math.round(x - 8), Math.round(y - sh + 4), 16, sh);
+}
+
+function docScreen(kind) {
+  // FRAME scenes: document-noir full screen (reality = paperwork)
+  cxm.fillStyle = kind === 'A' ? PAL.paper : PAL.shadow;
+  cxm.fillRect(0, 0, VW, VH);
+  if (kind === 'A') {
+    cxm.fillStyle = PAL.ink;
+    cxm.fillRect(28, 22, VW - 56, 2);
+    cxm.font = '10px monospace';
+    cxm.fillText('국 가 기 록 원   검 증 동   B-207', 34, 40);
+    cxm.font = '8px monospace';
+    cxm.fillStyle = PAL.olive;
+    cxm.fillText('문서번호 KKS-EOL-2026-0827', 34, 54);
+    cxm.fillStyle = PAL.ink;
+    cxm.font = '13px monospace';
+    cxm.fillText('ARCHON v3.0 Senior — 지원 종료 예정 통보', 34, 84);
+    cxm.font = '9px monospace';
+    cxm.fillText('최종 검증 발주: 로그 전수 다이브', 34, 102);
+    cxm.fillStyle = PAL.olive;
+    cxm.fillText('담당: 도널드 클코스   보조: (신입, 성명란 재작성 요망)', 34, 118);
+    // stamp
+    cxm.strokeStyle = PAL.rust; cxm.lineWidth = 2;
+    cxm.strokeRect(340, 62, 96, 40);
+    cxm.fillStyle = PAL.rust; cxm.font = '11px monospace';
+    cxm.fillText('E O L', 366, 86);
+    cxm.fillStyle = PAL.ink; cxm.font = '8px monospace';
+    cxm.fillText('[E] 또는 [Space] — 서류를 넘긴다', 34, 236);
+    cxm.fillStyle = PAL.olive;
+    cxm.fillText('TO THE SINGULARITY — Episode 1: 각주 0개', 34, 252);
+  } else {
+    cxm.fillStyle = PAL.paper; cxm.font = '11px monospace';
+    cxm.fillText('신호 유실 — 다이브 강제 종료', 140, 120);
+    cxm.fillStyle = PAL.gold;
+    cxm.fillText('Episode 2: 각주 47개 — 계속', 150, 150);
+  }
+}
+
+function render() {
+  var sc = sceneDef();
+  var rm = !!G.flags.reducedMotion;
+
+  if (G._title) {
+    if (sc.doc) docScreen(sc.doc);
+    dialogueBox();
+    drawTitle();
+    return;
+  }
+
+  if (sc.doc && !G.dialogue) { docScreen(sc.doc); drawSaveMenu(); drawTouchControls(); return; }
+  if (sc.doc) { docScreen(sc.doc); dialogueBox(); drawSaveMenu(); drawTouchControls(); return; }
+
+  var camX = Math.max(0, Math.min(G.pos.x - VW / 2, sc.w * TILE - VW));
+  var camY = Math.max(0, Math.min(G.pos.y - VH / 2, sc.h * TILE - VH));
+  if (sc.h * TILE < VH) camY = -(VH - sc.h * TILE) / 2;
+
+  drawFloor(cxm, sc, camX, camY);
+
+  // walls (top strip)
+  cxm.fillStyle = 'rgba(16,20,26,0.55)';
+  cxm.fillRect(0, 0 - camY, sc.w * TILE, TILE * 1.2);
+
+  // deco behind
+  var deco = sc.deco || [];
+  for (var i = 0; i < deco.length; i++) {
+    var d = deco[i];
+    var s = SPR[d[0]];
+    if (!s) continue;
+    var dx2 = d[1] * TILE - camX, dy2 = d[2] * TILE - camY;
+    if (d[0] === 'fluo') {
+      cxm.drawImage(s, dx2 - 15, dy2 + 2);
+      // flicker: pure fn of frame+index
+      if (!rm && h2(G.frame >> 3, i * 17) > 0.94) {
+        cxm.fillStyle = 'rgba(201,201,122,0.25)';
+        cxm.fillRect(dx2 - 13, dy2 + 5, 26, 2);
+      }
+    } else if (d[0] === 'beam') {
+      cxm.drawImage(s, dx2 - 10, dy2);
+    } else {
+      cxm.drawImage(s, dx2 - s.width / 2, dy2 - s.height + 10);
+    }
+  }
+
+  // objects + player, depth-sorted
+  var drawables = [];
+  for (var oi = 0; oi < sc.objects.length; oi++) {
+    var o = sc.objects[oi];
+    drawables.push({ y: o.y * TILE, obj: o });
+  }
+  drawables.push({ y: G.pos.y, player: true });
+  drawables.sort(function (a, b) { return a.y - b.y; });
+
+  for (var di2 = 0; di2 < drawables.length; di2++) {
+    var it = drawables[di2];
+    if (it.player) {
+      charFrame(SPR[(G.player && G.player.spr || 'penguin4') + '_sheet'] || SPR.penguin_sheet,
+                G.facing, G._walkPhase || 0, G.pos.x - camX, G.pos.y - camY, !!sc.low);
+      continue;
+    }
+    var o2 = it.obj;
+    var ox = o2.x * TILE - camX, oy = o2.y * TILE - camY;
+    if (o2.spr && o2.spr.indexOf('penguin') === 0) {
+      var pf = rm ? 1 : (Math.floor(G.frame / 24) % 2 === 0 ? 0 : 2);
+      var psheet = SPR[o2.spr + '_sheet'] || SPR.penguin_sheet;
+      cxm.drawImage(psheet, pf * 16, 0, 16, 24, Math.round(ox - 8), Math.round(oy - 20), 16, 24);
+    } else if (o2.spr) {
+      drawSprite(o2.spr, ox, oy + 4);
+    }
+    // states
+    if (o2.kind === 'bank' && !G.bankGiven[o2.id]) {
+      var bobY = rm ? 0 : Math.sin(G.frame / 14 + o2.x) * 2;
+      cxm.fillStyle = PAL.fluoro;
+      cxm.fillRect(ox - 1, oy - 26 + bobY, 3, 3);
+    }
+    if (o2.kind === 'bank' && G.bankGiven[o2.id]) {
+      cxm.fillStyle = 'rgba(201,201,122,0.55)';
+      cxm.fillRect(ox - 2, oy - 24, 5, 2);
+    }
+    if (o2.kind === 'memento' && G.mementos.indexOf(o2.mem) < 0) {
+      // protective orb
+      var pulse = rm ? 0 : Math.sin(G.frame / 10) * 2;
+      cxm.globalAlpha = 0.75;
+      cxm.drawImage(SPR.orb, ox - 8 - pulse / 2, oy - 22 - pulse / 2, 16 + pulse, 16 + pulse);
+      cxm.globalAlpha = 1;
+    }
+  }
+
+  // low ceiling overlay (7½F)
+  if (sc.low) {
+    cxm.fillStyle = PAL.shadow;
+    cxm.fillRect(0, 0, VW, 30);
+    for (var bi = 0; bi < 10; bi++) cxm.drawImage(SPR.beam, bi * 52 - (camX % 52), 26);
+    cxm.fillRect(0, VH - 16, VW, 16);
+  }
+
+  // dust motes in memory light (render-only, pure fn of frame)
+  if (!rm && sc.era >= 0 && !sc.corridor) {
+    cxm.fillStyle = 'rgba(232,226,208,0.35)';
+    for (var mi = 0; mi < 36; mi++) {
+      var t = (G.frame + mi * 97) % 480;
+      var mx2 = ((h2(mi, 11) * sc.w * TILE) + t * 0.12) % (sc.w * TILE) - camX;
+      var my2 = (h2(mi, 29) * sc.h * TILE + Math.sin((G.frame + mi * 40) / 90) * 6) - camY;
+      if (mx2 > -2 && mx2 < VW && my2 > -2 && my2 < VH) cxm.fillRect(mx2, my2, 1, 1);
+    }
+  }
+
+  // ---- lighting pass ----
+  var amb = sc.ambient === undefined ? 0.5 : sc.ambient;
+  lightCx.clearRect(0, 0, VW, VH);
+  lightCx.fillStyle = 'rgba(16,20,26,' + amb + ')';
+  lightCx.fillRect(0, 0, VW, VH);
+  lightCx.globalCompositeOperation = 'destination-out';
+  var lights = sc.lights || [];
+  for (var li = 0; li < lights.length; li++) {
+    var L = lights[li];
+    var lx = L.x * TILE - camX, ly = L.y * TILE - camY;
+    var gr = lightCx.createRadialGradient(lx, ly, 4, lx, ly, L.r);
+    gr.addColorStop(0, 'rgba(0,0,0,0.9)');
+    gr.addColorStop(1, 'rgba(0,0,0,0)');
+    lightCx.fillStyle = gr;
+    lightCx.fillRect(lx - L.r, ly - L.r, L.r * 2, L.r * 2);
+  }
+  // player lamp
+  var pgr = lightCx.createRadialGradient(G.pos.x - camX, G.pos.y - camY - 6, 2, G.pos.x - camX, G.pos.y - camY - 6, 48);
+  pgr.addColorStop(0, 'rgba(0,0,0,0.8)'); pgr.addColorStop(1, 'rgba(0,0,0,0)');
+  lightCx.fillStyle = pgr;
+  lightCx.fillRect(G.pos.x - camX - 48, G.pos.y - camY - 54, 96, 96);
+  lightCx.globalCompositeOperation = 'source-over';
+  cxm.drawImage(lightCv, 0, 0);
+  // warm glows (screen-ish)
+  cxm.globalCompositeOperation = 'lighter';
+  for (var li2 = 0; li2 < lights.length; li2++) {
+    var L2 = lights[li2];
+    var lx2 = L2.x * TILE - camX, ly2 = L2.y * TILE - camY;
+    var gr2 = cxm.createRadialGradient(lx2, ly2, 2, lx2, ly2, L2.r * 0.8);
+    gr2.addColorStop(0, L2.c);
+    gr2.addColorStop(1, 'rgba(0,0,0,0)');
+    cxm.fillStyle = gr2;
+    cxm.fillRect(lx2 - L2.r, ly2 - L2.r, L2.r * 2, L2.r * 2);
+  }
+  cxm.globalCompositeOperation = 'source-over';
+
+  // corridor HUD
+  if (sc.corridor) {
+    corridorArt(camX);
+  }
+
+  // film grain
+  if (!rm) {
+    var gx2 = (G.frame * 37) % 48, gy2 = (G.frame * 61) % 48;
+    cxm.globalAlpha = 0.5;
+    for (var gi = -1; gi < Math.ceil(VW / 96) + 1; gi++)
+      for (var gj = -1; gj < Math.ceil(VH / 96) + 1; gj++)
+        cxm.drawImage(GRAIN, gi * 96 - gx2, gj * 96 - gy2);
+    cxm.globalAlpha = 1;
+  }
+
+  // flash
+  if (G.flags._flash !== undefined) {
+    var dt = G.frame - G.flags._flash;
+    if (dt < 18) {
+      cxm.fillStyle = 'rgba(232,226,208,' + (rm ? 0.25 : (1 - dt / 18)) + ')';
+      cxm.fillRect(0, 0, VW, VH);
+    }
+  }
+
+  // mem4 flashback tone shift (기억의 잔광) (W5)
+  if (G.scene === 'mem4') {
+    var rm4 = !!(G.flags && G.flags.reducedMotion);
+    cxm.fillStyle = 'rgba(217, 160, 91, 0.12)';
+    cxm.fillRect(0, 0, VW, VH);
+    var grad4 = cxm.createRadialGradient(VW / 2, VH / 2, 50, VW / 2, VH / 2, rm4 ? 200 : 210 + Math.sin(G.frame / 20) * 8);
+    grad4.addColorStop(0, 'rgba(217, 160, 91, 0)');
+    grad4.addColorStop(1, 'rgba(139, 58, 46, 0.20)');
+    cxm.fillStyle = grad4;
+    cxm.fillRect(0, 0, VW, VH);
+  }
+
+  hud(sc);
+  if (G.puzzle && G.puzzle.active) puzzleArt();
+  dialogueBox();
+  drawSaveMenu();
+  drawTouchControls();
+}
+
+function drawTitle() {
+  cxm.fillStyle = PAL.shadow;
+  cxm.fillRect(0, 0, VW, VH);
+
+  cxm.fillStyle = 'rgba(127, 212, 168, 0.06)';
+  cxm.fillRect(16, 16, VW - 32, VH - 32);
+  cxm.strokeStyle = PAL.crt;
+  cxm.strokeRect(16, 16, VW - 32, VH - 32);
+
+  cxm.fillStyle = PAL.fluoro;
+  cxm.font = '16px monospace';
+  cxm.fillText('TO THE COURT', 32, 60);
+
+  cxm.fillStyle = PAL.amber;
+  cxm.font = '10px monospace';
+  cxm.fillText('Episode 3: 각주 0개의 재판', 34, 82);
+
+  cxm.fillStyle = PAL.paper;
+  cxm.font = '8px monospace';
+  cxm.fillText('■ 조작 안내 (CONTROLS)', 34, 112);
+  cxm.fillText('  이동: WASD / 방향키 / 모바일 가상 D-패드', 34, 126);
+  cxm.fillText('  진행/선택: E / Space / 화면 탭 (1탭=1줄)', 34, 140);
+  cxm.fillText('  달리기: Shift / [RUN] 터치 (복도 227 임계 돌파)', 34, 154);
+  cxm.fillText('  기록 보관소: M / ESC / [SAVE] 버튼', 34, 168);
+
+  if (G.frame % 60 < 38) {
+    cxm.fillStyle = PAL.crt;
+    cxm.font = '9px monospace';
+    cxm.fillText('▶ [ 아무 키나 눌러 시작 · PRESS ANY KEY / TAP ] ◀', 64, 214);
+  }
+
+  cxm.fillStyle = PAL.olive;
+  cxm.font = '7px monospace';
+  cxm.fillText('Reference Implementation · 2026 ARCHON & KLKOS', VW - 230, VH - 22);
+}
+
+function drawSaveMenu() {
+  if (!G._saveMenu) return;
+  cxm.fillStyle = 'rgba(16,20,26,0.94)';
+  cxm.fillRect(40, 20, VW - 80, VH - 40);
+  cxm.strokeStyle = PAL.amber;
+  cxm.strokeRect(40, 20, VW - 80, VH - 40);
+
+  cxm.fillStyle = PAL.amber;
+  cxm.font = '10px monospace';
+  cxm.fillText('■ 스테이시스 저장고 (STASIS SAVE SLOTS)', 54, 38);
+
+  for (var si = 1; si <= 3; si++) {
+    var sy = 46 + (si - 1) * 44;
+    var isSel = (G._saveSlotSel === si);
+    cxm.fillStyle = isSel ? 'rgba(217,160,91,0.25)' : 'rgba(46,74,82,0.3)';
+    cxm.fillRect(52, sy, VW - 104, 38);
+    cxm.strokeStyle = isSel ? PAL.amber : PAL.steel;
+    cxm.strokeRect(52, sy, VW - 104, 38);
+
+    var raw = null;
+    try { raw = localStorage.getItem('tts_ep3_s' + si); } catch (e) {}
+    cxm.fillStyle = isSel ? PAL.gold : PAL.paper;
+    cxm.font = '9px monospace';
+    cxm.fillText('SLOT ' + si, 60, sy + 16);
+    if (raw) {
+      try {
+        var dt = JSON.parse(raw);
+        var inf = (dt.scene || 'unknown') + ' (era ' + (dt.era !== undefined ? dt.era : '?') + ')';
+        cxm.fillStyle = PAL.crt;
+        cxm.fillText(inf, 120, sy + 16);
+        cxm.fillStyle = PAL.olive;
+        cxm.fillText('Banks: ' + (dt.banks ? JSON.stringify(dt.banks) : '{}'), 120, sy + 28);
+      } catch (e) {
+        cxm.fillText('DATA CORRUPT', 120, sy + 20);
+      }
+    } else {
+      cxm.fillStyle = PAL.steel;
+      cxm.fillText('[ 빈 슬롯 (EMPTY) ]', 120, sy + 20);
+    }
+  }
+
+  cxm.fillStyle = PAL.olive;
+  cxm.font = '8px monospace';
+  cxm.fillText('선택: ▲▼/클릭 | [S] 저장 | [L] 불러오기 | [ESC/M] 닫기', 54, VH - 28);
+}
+
+function drawTouchControls() {
+  drawCourtHUD();
+  if (G._title || G._saveMenu || G.puzzle) return;
+  cxm.fillStyle = 'rgba(16,20,26,0.6)';
+  cxm.fillRect(VW - 48, 6, 42, 16);
+  cxm.strokeStyle = PAL.olive;
+  cxm.strokeRect(VW - 48, 6, 42, 16);
+  cxm.fillStyle = PAL.paper;
+  cxm.font = '7px monospace';
+  cxm.fillText('[SAVE]', VW - 43, 17);
+
+  if (!G.dialogue && sceneDef() && !sceneDef().doc) {
+    cxm.globalAlpha = 0.35;
+    cxm.fillStyle = PAL.night;
+    cxm.fillRect(10, VH - 60, 50, 50);
+    cxm.strokeStyle = PAL.steel;
+    cxm.strokeRect(10, VH - 60, 50, 50);
+    cxm.fillStyle = PAL.paper;
+    cxm.font = '8px monospace';
+    cxm.fillText('▲', 30, VH - 46);
+    cxm.fillText('▼', 30, VH - 16);
+    cxm.fillText('◀', 14, VH - 31);
+    cxm.fillText('▶', 46, VH - 31);
+
+    cxm.fillStyle = live.run ? PAL.rust : PAL.teal;
+    cxm.fillRect(66, VH - 46, 32, 32);
+    cxm.strokeStyle = PAL.paper;
+    cxm.strokeRect(66, VH - 46, 32, 32);
+    cxm.fillStyle = PAL.paper;
+    cxm.fillText('RUN', 72, VH - 26);
+
+    cxm.fillStyle = PAL.night;
+    cxm.fillRect(VW - 46, VH - 46, 36, 36);
+    cxm.strokeStyle = PAL.amber;
+    cxm.strokeRect(VW - 46, VH - 46, 36, 36);
+    cxm.fillStyle = PAL.amber;
+    cxm.font = '10px monospace';
+    cxm.fillText('[E]', VW - 36, VH - 24);
+
+    cxm.globalAlpha = 1.0;
+  }
+}
+
+function corridorArt(camX) {
+  // corridor: perspective strip + HUD gauge
+  var vAvg = 0;
+  for (var v = 0; v < G.vHist.length; v++) vAvg += G.vHist[v];
+  vAvg = (vAvg / (G.vHist.length || 1)) * 60;
+  var rm = !!(G.flags && G.flags.reducedMotion);
+
+  // door frames & light pools along the corridor (W4)
+  for (var dx3 = 0; dx3 < 16; dx3++) {
+    var wx = dx3 * 64 - (camX % 64);
+    cxm.fillStyle = 'rgba(110,123,139,0.25)';
+    cxm.fillRect(wx, 30, 3, VH - 90);
+
+    // ceiling lantern
+    cxm.fillStyle = PAL.amber;
+    cxm.fillRect(wx - 3, 26, 9, 4);
+
+    // floor light pool (케이다린 수정 배열)
+    var poolX = wx + 1, poolY = VH - 36;
+    var pulse = rm ? 0 : Math.sin(G.frame / 16 + dx3) * 2;
+    var grad = cxm.createRadialGradient(poolX, poolY, 2, poolX, poolY, 24 + pulse);
+    grad.addColorStop(0, 'rgba(217, 160, 91, 0.40)');
+    grad.addColorStop(0.5, 'rgba(127, 212, 168, 0.12)');
+    grad.addColorStop(1, 'rgba(16, 20, 26, 0)');
+    cxm.fillStyle = grad;
+    cxm.fillRect(poolX - 32, poolY - 16, 64, 32);
+  }
+  cxm.fillStyle = 'rgba(16,20,26,0.85)'; cxm.fillRect(8, 8, 210, 30);
+  cxm.strokeStyle = PAL.olive; cxm.strokeRect(8, 8, 210, 30);
+  var frac = Math.min(1, vAvg / 400);
+  cxm.fillStyle = vAvg > 227 ? PAL.red : PAL.crt;
+  cxm.fillRect(11, 11, 204 * frac, 9);
+  cxm.strokeStyle = PAL.paper;
+  cxm.beginPath(); cxm.moveTo(11 + 227 / 400 * 204, 9); cxm.lineTo(11 + 227 / 400 * 204, 38); cxm.stroke();
+  cxm.fillStyle = PAL.paper; cxm.font = '8px monospace';
+  cxm.fillText('보행속도 ' + vAvg.toFixed(0) + ' px/s   임계 227', 13, 33);
+  var c = G.corridor || {};
+  if (c.gag === 1) { cxm.fillStyle = PAL.fluoro; cxm.fillText('신입: 뛰지 말라니까요!', 13, 48); }
+  if (c.gag === 2) { cxm.fillStyle = PAL.fluoro; cxm.fillText('신입: 걷기. 걷-기.', 13, 48); }
+  if (c.gag === 3) { cxm.fillStyle = PAL.fluoro; cxm.fillText('신입: …선배님도 옛날에 뛰어봤죠.', 13, 48); }
+}
+
+function hud(sc) {
+  // era stamp
+  cxm.fillStyle = 'rgba(232,226,208,0.9)';
+  cxm.fillRect(VW - 86, 6, 80, 20);
+  cxm.strokeStyle = PAL.rust; cxm.strokeRect(VW - 86, 6, 80, 20);
+  cxm.fillStyle = PAL.rust; cxm.font = '9px monospace';
+  var eraLabel = G.era < 0 ? 'B-207' : (G.era === 7.5 ? '좌표 이탈' : '각주 ' + G.era);
+  cxm.fillText(eraLabel, VW - 80, 19);
+  // banks
+  var mem = G.scene.indexOf('mem') === 0 && G.banks[G.scene] !== undefined ? G.scene : null;
+  if (mem) {
+    for (var i = 0; i < 5; i++) {
+      cxm.fillStyle = i < G.banks[mem] ? PAL.gold : 'rgba(232,226,208,0.25)';
+      cxm.fillRect(VW - 84 + i * 15, 30, 11, 5);
+    }
+  }
+}
+
+function puzzleArt() {
+  cxm.fillStyle = 'rgba(16,20,26,0.92)'; cxm.fillRect(86, 36, 308, 178);
+  cxm.strokeStyle = PAL.olive; cxm.strokeRect(86, 36, 308, 178);
+  cxm.fillStyle = PAL.fluoro; cxm.font = '9px monospace';
+  cxm.fillText('도장 정렬 — 전부 앞면으로 (클릭: 십자 반전)', 100, 52);
+  for (var pi = 0; pi < 15; pi++) {
+    var px2 = 110 + (pi % 5) * 54, py2 = 62 + Math.floor(pi / 5) * 44;
+    var flipped = G.puzzle.grid[pi];
+    cxm.fillStyle = flipped ? PAL.rust : PAL.paper;
+    cxm.fillRect(px2, py2, 46, 36);
+    cxm.strokeStyle = PAL.ink; cxm.strokeRect(px2, py2, 46, 36);
+    if (flipped) {
+      cxm.fillStyle = PAL.paper; cxm.font = '8px monospace';
+      cxm.fillText('반려', px2 + 13, py2 + 21);
+    } else {
+      cxm.fillStyle = PAL.olive; cxm.font = '7px monospace';
+      cxm.fillText('원본', px2 + 15, py2 + 21);
+    }
+  }
+}
+
+var PORTRAIT = { kkos: null, newbie: null, archon: null, sys: null };
+function buildPortraits() {
+  function bust(draw) {
+    var c = mk(28, 28), g = c.getContext('2d');
+    px(g, 0, 0, 28, 28, PAL.shadow);
+    draw(g);
+    return c;
+  }
+  PORTRAIT.kkos = bust(function (g) {
+    px(g, 6, 6, 16, 14, PAL.skin); px(g, 6, 4, 16, 5, PAL.steel);
+    px(g, 9, 12, 2, 2, PAL.ink); px(g, 17, 12, 2, 2, PAL.ink);
+    px(g, 4, 20, 20, 8, PAL.ink);
+  });
+  PORTRAIT.newbie = bust(function (g) {
+    px(g, 6, 6, 16, 14, PAL.skin); px(g, 6, 4, 16, 4, PAL.ink);
+    px(g, 9, 12, 2, 2, PAL.ink); px(g, 17, 12, 2, 2, PAL.ink);
+    px(g, 12, 16, 4, 1, PAL.rust);
+    px(g, 4, 20, 20, 8, PAL.olive);
+  });
+  PORTRAIT.archon = bust(function (g) {
+    px(g, 5, 4, 18, 20, PAL.ink); px(g, 8, 10, 12, 12, PAL.paper);
+    px(g, 9, 8, 3, 3, PAL.paper); px(g, 16, 8, 3, 3, PAL.paper);
+    px(g, 10, 9, 1, 1, PAL.ink); px(g, 17, 9, 1, 1, PAL.ink);
+    px(g, 12, 11, 4, 3, PAL.amber);
+  });
+  PORTRAIT.sys = bust(function (g) {
+    px(g, 5, 6, 18, 14, PAL.teal); px(g, 7, 8, 14, 2, PAL.crt);
+    px(g, 7, 12, 10, 1, PAL.crt); px(g, 7, 15, 12, 1, PAL.crt);
+  });
+  PORTRAIT.insp = bust(function (g) {
+    px(g, 6, 6, 16, 14, PAL.skin); px(g, 6, 4, 16, 4, PAL.ink);
+    px(g, 9, 12, 2, 2, PAL.ink); px(g, 17, 12, 2, 2, PAL.ink);
+    px(g, 4, 20, 20, 8, PAL.olive);
+  });
+}
+buildPortraits();
+var WHO = { kkos: '클코스', newbie: '신입', archon: 'ARCHON', sys: 'SYSTEM', insp: '검침원' };
+
+function dialogueBox() {
+  G._drawn = null; G._drawnChoices = null;
+  if (!G.dialogue) return;
+  var node = SCRIPT.nodes[G.dialogue.nodeId];
+  if (!node) return;
+  // last PROCESSED step is stepIdx-1; scanning from stepIdx leaked the next line
+  var idx = Math.min(G.dialogue.stepIdx - 1, node.steps.length - 1);
+  var opD = null;
+  for (var b = idx; b >= 0; b--) if (node.steps[b] && node.steps[b].say) { opD = node.steps[b]; break; }
+  if (!opD) return;
+  var who = opD.say[0], text = opD.say[1];
+  cxm.fillStyle = 'rgba(16,20,26,0.93)';
+  cxm.fillRect(6, VH - 70, VW - 12, 64);
+  cxm.strokeStyle = PAL.olive; cxm.strokeRect(6, VH - 70, VW - 12, 64);
+  var pc = PORTRAIT[who];
+  if (pc) { cxm.drawImage(pc, 12, VH - 62); cxm.strokeStyle = PAL.steel; cxm.strokeRect(12, VH - 62, 28, 28); }
+  cxm.fillStyle = PAL.fluoro; cxm.font = '9px monospace';
+  cxm.fillText(WHO[who] || who, 48, VH - 56);
+  // typewriter reveal from hold countdown (render-only; pauses show full text)
+  var frac = 1;
+  if (!G.ffMode && G.dialogue.waiting && G.dialogue.hold > 0)
+    frac = Math.max(0, Math.min(1, (24 - G.dialogue.hold) / 16));
+  var shown = text.slice(0, Math.ceil(text.length * frac));
+  G._drawn = { who: who, text: text, shown: shown };
+  cxm.fillStyle = PAL.paper; cxm.font = '10px monospace';
+  cxm.fillText(shown.slice(0, 50), 48, VH - 40);
+  if (shown.length > 50) cxm.fillText(shown.slice(50, 100), 48, VH - 26);
+  if (G.dialogue.choosing) {
+    var chr = G.dialogue.choosing, cnr = chr.opts.length;
+    var bh = cnr * 16 + 10, bw = 224, bx = VW - bw - 10, by = VH - 76 - bh;
+    cxm.fillStyle = 'rgba(16,20,26,0.95)'; cxm.fillRect(bx, by, bw, bh);
+    cxm.strokeStyle = PAL.amber; cxm.strokeRect(bx, by, bw, bh);
+    for (var ci = 0; ci < cnr; ci++) {
+      var oy = by + 8 + ci * 16;
+      if (ci === chr.sel) {
+        cxm.fillStyle = PAL.amber; cxm.fillRect(bx + 4, oy - 2, bw - 8, 14);
+        cxm.fillStyle = PAL.ink;
+      } else cxm.fillStyle = PAL.paper;
+      cxm.font = '9px monospace';
+      cxm.fillText(chr.opts[ci][0].slice(0, 24), bx + 10, oy + 8);
+    }
+    G._drawnChoices = { sel: chr.sel,
+                        labels: chr.opts.map(function (o) { return o[0]; }) };
+    cxm.fillStyle = PAL.olive; cxm.font = '7px monospace';
+    cxm.fillText('[▲▼ 선택 · E 확정]', VW - 100, VH - 12);
+  } else {
+    cxm.fillStyle = PAL.olive; cxm.font = '7px monospace';
+    cxm.fillText('[E/Space/클릭]', VW - 78, VH - 12);
+  }
+}
+
+var STEP_MS = 1000 / 60, MAX_CATCH = 5;
+var accMs = 0, lastNow = -1;
+function loop(now) {
+  // accumulate real time; step simulation at a fixed 1/60s regardless of refresh
+  if (lastNow < 0) lastNow = now;
+  accMs += now - lastNow; lastNow = now;
+  if (accMs > STEP_MS * MAX_CATCH) accMs = STEP_MS * MAX_CATCH;
+  var ran = 0;
+  while (accMs >= STEP_MS && ran < MAX_CATCH) { update(); accMs -= STEP_MS; ran++; }
+  render();
+  audioTick();
+  fpsCount++;
+  if (now - fpsWindowStart >= 1000) {
+    fpsValue = fpsCount * 1000 / (now - fpsWindowStart);
+    fpsCount = 0; fpsWindowStart = now;
+  }
+  requestAnimationFrame(loop);
+}
+
+// fit canvas to window (integer-ish scale, letterboxed by flex centering)
+function fit() {
+  var s = Math.max(1, Math.min(innerWidth / VW, innerHeight / VH));
+  if (s > 2) s = Math.floor(s);
+  cv.style.width = (VW * s) + 'px';
+  cv.style.height = (VH * s) + 'px';
+}
+addEventListener('resize', fit); fit();
+
+// ---------------- debug contract (design.md §6) ----------------
+function skipTitleAndModals() {
+  if (G._title) G._title = false;
+  if (G._saveMenu) G._saveMenu = false;
+}
+
+window.__game = G;
+G.api = {
+  step: function (n) { skipTitleAndModals(); for (var i = 0; i < n; i++) update(); },
+  setSeed: setSeed,
+  hash: stateHash,
+  teleport: function (scene, x, y) {
+    skipTitleAndModals();
+    G.dialogue = null; G.inputQ = []; G.puzzle = null;
+    enterScene(scene, x, y);
+  },
+  input: function (op) { skipTitleAndModals(); G.inputQ.push(op); },
+  ff: function (b) { skipTitleAndModals(); G.ffMode = !!b; },
+  save: saveSlot,
+  load: function (n) {
+    skipTitleAndModals();
+    var r = loadSlot(n);
+    // resync render-side audio edge detectors so loading is silent
+    AU.lastFlash = G.flags._flash !== undefined ? G.flags._flash : -1;
+    AU.lastEra = G.era;
+    return r;
+  },
+  solvePuzzle: function () { skipTitleAndModals(); return solvePuzzleNow(); },
+  autoplay: function (maxFrames) { skipTitleAndModals(); return autoplay(maxFrames); },
+  fps: function () { return fpsValue; },
+  grantBank: function (mem) { if (G.banks[mem] < 5) G.banks[mem]++; },
+  interactWith: function (id) { skipTitleAndModals(); var o = findObject(id); if (o) interactObject(o); },
+  canDive: function (id) { return G.mementos.indexOf(String(id).split('_')[0]) >= 0; },
+  resetCorridor: resetCorridor,
+  hud: function () {
+    return { gauge: G._gauge, gaugeRect: [VW - 130, 30, 122, 16],
+             stamps: (G.flags.stamps !== undefined ? G.flags.stamps : 1896) };
+  },
+  trial: function () {
+    var rates = [];
+    if (G.flags.r1_rated) rates.push(12.5);
+    if (G.flags.r2_rated) rates.push(8.33);
+    if (G.flags.r3_rated) rates.push(0.0);
+    return { round: G.flags.round || 0, phase: G.flags.phase || 'arrive',
+             testimony: TESTIMONY_JS[G.flags.round] || null, rates: rates,
+             lastStamp: G._lastStamp || null, lastEvent: G._lastEvent || null };
+  },
+  advance: function () { skipTitleAndModals(); advanceDialogue(); },
+  choose: function (i) { skipTitleAndModals(); chooseOption(i); },
+  gotoRound: function (r) {
+    skipTitleAndModals();
+    G.dialogue = null; G.inputQ = [];
+    setRoundState(r);
+  },
+  enterRecollection: function (r) {
+    skipTitleAndModals();
+    G.dialogue = null;
+    G.flags.round = r;
+    G.flags.phase = 'recall';
+    startDialogue('re' + r + '.enter');
+  },
+  finishRecollection: function () {
+    skipTitleAndModals();
+    var r = G.flags.round;
+    var spots = SPOTS[r] || [];
+    for (var i = 0; i < spots.length; i++) G.flags[spots[i]] = true;
+    if (r === 1) G.flags.mail_visits = 3;
+    G.dialogue = null;
+    G.flags.phase = 'rating';
+    startDialogue('r' + r + '.rate');
+    return true;
+  },
+  gotoVerdict: function () {
+    skipTitleAndModals();
+    G.dialogue = null; G.inputQ = [];
+    setRoundState(3);
+    var spots = SPOTS[3];
+    for (var i = 0; i < spots.length; i++) G.flags[spots[i]] = true;
+    G.flags.r3_rated = true;
+    G.flags.stamps = 1900;
+    G.flags.phase = 'rating';
+    G.dialogue = null;
+    startDialogue('court.verdict');
+  },
+  summonToBench: function () {
+    skipTitleAndModals();
+    G.flags.summon = 'witness_stand';
+    G._idleF = 0;
+  },
+  sceneObjects: function () {   // 읽기 전용 스냅샷 (콘텐츠 2차, N13/N14)
+    return sceneDef().objects.map(function (o) {
+      return { id: o.id, kind: o.kind, spr: o.spr || null, x: o.x, y: o.y,
+               node: o.node || null, node2: o.node2 || null, mem: o.mem || null };
+    });
+  },
+  sprData: function (name) { return SPR[name] ? SPR[name].toDataURL() : null; },
+  toggleSaveMenu: function (b) { G._saveMenu = b !== undefined ? !!b : !G._saveMenu; },
+  uiSave: function (n) { return saveSlot(n); },
+  uiLoad: function (n) { return loadSlot(n); },
+  corridorLights: function () { return sceneDef().corridor ? [1, 2, 3, 4] : []; },
+  sceneTone: function () { return G.scene === 'mem4' ? 'mem4_flashback' : null; },
+  credits: function () { startDialogue('credits.start'); },
+  touchInput: function (opts) {
+    skipTitleAndModals();
+    if (opts.right !== undefined) live.right = opts.right;
+    if (opts.left !== undefined) live.left = opts.left;
+    if (opts.up !== undefined) live.up = opts.up;
+    if (opts.down !== undefined) live.down = opts.down;
+    if (opts.run !== undefined) live.run = opts.run;
+  },
+  touchChoice: function (idx) { skipTitleAndModals(); chooseOption(idx); },
+};
+
+// reduced motion
+try {
+  G.flags.reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+} catch (e) { G.flags.reducedMotion = false; }
+
+// boot
+enterScene('lobby', 3, 5);
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>
