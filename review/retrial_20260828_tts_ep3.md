@@ -11,7 +11,7 @@ meta:
   remedy_scope: episode3.html(+179B, 터치 게이지 분기 6줄) · test_episode3.py(+C23, 50줄)
   spec_of_record: review/spec_20260828_tts_ep3.md (status·AC·헌법 항목 동시 정정)
   ci: https://github.com/KaronLabs/To-The-Singularity/actions/runs/33114328615
-  review_verdict: PENDING (재심)
+  review_verdict: "NOT GUILTY (기능 한정 약식명령 — APPROVE · 🍕0 · 👍91/100)"
 ```
 
 ## 1. 공소사실에 대한 답변 — 반박 0건, 전건 인정

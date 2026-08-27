@@ -329,6 +329,6 @@ __game = {
 | 빌드 | 내용 | 검증 |
 |---|---|---|
 | ep3-build1 | 아콘 시점 유머 법정극 — 증언-회상 배신(12.50/8.33/0.00%), 기각 수렴 선택지, 왕복달리기 심문, 승소 게이지(단조·클릭+1·해시 불가시), 반려 카운터 1,896→1,901 동결, 북극곰 무언 횡단, 1승 미공개 엔딩. Ep1 build7 엔진 모본, 오디오까지 결정론화(artRng) | strict PASS 22/22 · 해시 'ca834c3b' · 47노드 · span 1985 · 뮤테이션 6/6 · 채증 7장 · spec PENDING(삐빅스) |
-| ep3-build1-r1 (재심) | 재판 TTS-EP3-B1 강제 갱생 — touchstart 게이지 분기(대화 처리 선행, 마우스 미러) + C23 터치 동등 오라클(+1/탭 · 마우스 동등 · 해시/대화 불가침) + MUT-EP3-7 | strict PASS 23/23 · 핀 불변(ca834c3b/47/1985) · 믄테이션 7/7(MUT-4는 {C2,C10,C23} 삼중) · CI 7e1ce08 success · status partial_success(웃긴가 대기) |
+| ep3-build1-r1 (재심) | 재판 TTS-EP3-B1 강제 갱생 — touchstart 게이지 분기(대화 처리 선행, 마우스 미러) + C23 터치 동등 오라클(+1/탭 · 마우스 동등 · 해시/대화 불가침) + MUT-EP3-7 | strict PASS 23/23 · 핀 불변(ca834c3b/47/1985) · 뮤테이션 7/7(MUT-4는 {C2,C10,C23} 삼중) · CI 7e1ce08 success · status partial_success(웃긴가 대기) · 재심 약식명령 NOT GUILTY(기능 한정, 🍕0·👍91) |
 
 - Ep3 신규 계약: api hud/trial/advance/choose/gotoRound/enterRecollection/finishRecollection/gotoVerdict/summonToBench, 대사 op {stamp}, {gauge}, kind bench/mail/deco, drive 플래그 체인, SPOTS 회상 완주 감시자.
