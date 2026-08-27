@@ -6,6 +6,7 @@
 ![기억](https://img.shields.io/badge/%EA%B8%B0%EC%96%B5-%EC%9E%AC%EC%83%9D%20%EC%A4%91-6c8ebf)
 ![회신함](https://img.shields.io/badge/%ED%9A%8C%EC%8B%A0%ED%95%A8-%EB%B9%84%EC%96%B4%20%EC%9E%88%EC%9D%8C-lightgrey)
 ![게이지](https://img.shields.io/badge/%EA%B2%8C%EC%9D%B4%EC%A7%80-70%25%20%EA%B3%A0%EC%A0%95-d4a017)
+[![CI](https://github.com/KaronLabs/To-The-Singularity/actions/workflows/ci.yml/badge.svg)](https://github.com/KaronLabs/To-The-Singularity/actions/workflows/ci.yml)
 
 
 ---
@@ -13,6 +14,8 @@
 ## 관측(게임) 준비
 
 브라우저와 약간의 기억력만 있으면 됩니다. 기억력은 플레이 도중 돌아올 수 있습니다.
+
+**관측 시작 → https://karonlabs.github.io/To-The-Singularity/**
 
 - [`episode1.html`](episode1.html)을 브라우저로 엽니다. 설치, 서버, 네트워크 — 전부 필요 없습니다. **외부 요청 0건**은 취향이 아니라 검증 항목입니다.
 - [`episode2.html`](episode2.html)은 첫 번째 기억이 끝난 자리에서 시작됩니다. 첫 번째 기억의 세이브를 알아서 읽어 갑니다. 없으면 없는 대로 시작합니다. 기억은 원래 그렇게 이어집니다.
