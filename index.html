@@ -40,6 +40,50 @@
   .no { font-size:10px; letter-spacing:.22em; color:var(--steel); }
   .ttl { font-size:16px; margin:6px 0 7px; color:var(--paper); }
   .sub { font-size:12px; line-height:1.75; color:#9C9789; }
+  .st {
+    margin-top:10px; padding-top:9px; border-top:1px dashed #2B3743;
+    font-size:11px; letter-spacing:.04em; color:#5F6B77;
+  }
+  .st.has { color:var(--crt); }
+  .st.done { color:var(--amber); }
+
+  .dash { margin-top:26px; border:1px solid var(--teal); background:var(--night); }
+  .dash-h {
+    font-size:10px; letter-spacing:.2em; color:var(--steel);
+    padding:9px 14px; border-bottom:1px solid var(--teal);
+  }
+  .rows { padding:4px 14px 10px; }
+  .row {
+    display:flex; justify-content:space-between; align-items:baseline; gap:12px;
+    font-size:11.5px; line-height:2.1; border-bottom:1px dotted #26313C;
+  }
+  .row:last-child { border-bottom:none; }
+  .row dt { color:var(--steel); white-space:nowrap; }
+  .row dd { color:#B8B3A4; text-align:right; }
+
+  .gauge {
+    display:block; width:100%; text-align:left; cursor:pointer;
+    font:inherit; color:inherit; background:#16202B;
+    border:none; border-top:1px solid var(--teal); padding:13px 14px 15px;
+    transition:background .12s;
+    -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+  }
+  .gauge:hover, .gauge:focus-visible { background:#1F2B38; outline:none; }
+  .gauge:focus-visible { box-shadow:inset 0 0 0 1px var(--amber); }
+  .gauge:active { background:#26333F; }
+  .g-top { display:flex; justify-content:space-between; align-items:baseline; }
+  .g-lab { font-size:10px; letter-spacing:.2em; color:var(--steel); }
+  .g-val { font-size:15px; color:var(--amber); font-variant-numeric:tabular-nums; }
+  .g-bar {
+    display:block; height:5px; margin-top:9px;
+    background:#0E151C; border:1px solid #26313C;
+  }
+  .g-bar i { display:block; height:100%; width:70%; background:var(--amber); transition:width .22s; }
+  .g-note {
+    padding:0 14px 13px; font-size:11px; line-height:1.85; color:#6E7B8B;
+    background:#16202B; border-bottom:1px solid transparent;
+  }
+
   .meta {
     margin-top:26px; padding-top:16px; border-top:1px solid #232C36;
     font-size:11px; line-height:2; color:var(--steel);
@@ -48,6 +92,11 @@
   .meta a { color:var(--steel); }
   .meta a:hover { color:var(--amber); }
   .sig { margin-top:22px; font-size:11px; color:#4E5A66; line-height:1.9; }
+
+  @media (prefers-reduced-motion: reduce) {
+    a.ep, .g-bar i { transition:none; }
+    a.ep:hover, a.ep:focus-visible { transform:none; }
+  }
 </style>
 </head>
 <body>
@@ -65,24 +114,46 @@
     <div class="no">EPISODE 01</div>
     <div class="ttl">각주 없는 시대</div>
     <div class="sub">기억 세 곳으로 잠수합니다. 뱅크는 두 번 조사하면 다른 말을 합니다.</div>
+    <div class="st" id="st1">기록 조회 중</div>
   </a>
 
   <a class="ep" href="episode2.html">
     <div class="no">EPISODE 02</div>
     <div class="ttl">배관과 각주</div>
     <div class="sub">첫 번째 기억의 세이브를 이어받습니다. 없으면 없는 대로 시작합니다.</div>
+    <div class="st" id="st2">기록 조회 중</div>
   </a>
 
   <a class="ep" href="episode3.html">
     <div class="no">EPISODE 03 · TO THE COURT</div>
     <div class="ttl">각주 0개의 재판</div>
     <div class="sub">이번에는 아콘이 걷습니다. 법정에는 아무도 오지 않습니다. 재판은 그래도 열립니다.</div>
+    <div class="st" id="st3">기록 조회 중</div>
   </a>
+
+  <section class="dash" aria-label="관측 현황">
+    <div class="dash-h">관측 현황 · 부속 서식 제7-1호</div>
+    <dl class="rows">
+      <div class="row"><dt>회수한 기억</dt><dd id="d-mem">—</dd></div>
+      <div class="row"><dt>응답한 기억 뱅크</dt><dd id="d-bank">—</dd></div>
+      <div class="row"><dt>반려 도장</dt><dd id="d-stamp">—</dd></div>
+      <div class="row"><dt>회신함</dt><dd id="d-mail">—</dd></div>
+      <div class="row"><dt>관측 불가 항목</dt><dd id="d-unk">—</dd></div>
+    </dl>
+    <button class="gauge" id="gauge" type="button" aria-describedby="g-note">
+      <span class="g-top">
+        <span class="g-lab">SINGULARITY GAUGE</span>
+        <span class="g-val" id="g-val">70%</span>
+      </span>
+      <span class="g-bar"><i id="g-fill"></i></span>
+    </button>
+    <p class="g-note" id="g-note">산출 근거: 없음. 「표기하라」는 지시는 이행되었습니다.</p>
+  </section>
 
   <div class="meta">
     <b>조작</b> · 방향키 / WASD 이동 · E 조사 · Enter 진행 · M 세이브<br>
     <b>모바일</b> · 화면 D-패드와 [RUN], 그리고 탭<br>
-    <b>검증</b> · Ep1 PASS 23/23 · Ep2 PASS 23/23 · 외부 요청 0건<br>
+    <b>검증</b> · Ep1 · Ep2 · Ep3 각 PASS 23/23 · 허브 PASS 14/14 · 외부 요청 0건<br>
     <b>기록</b> · <a href="https://github.com/KaronLabs/To-The-Singularity">저장소</a> · <a href="https://github.com/KaronLabs/penguin-exit-0">같은 사건의 다른 진술</a>
   </div>
 
@@ -91,5 +162,188 @@
     비워 둡니다.
   </p>
 </main>
+
+<script>
+/* 부속 서식 제7-1호 — 관측 현황 집계기.
+   로컬 세이브만 읽습니다. 외부 요청 0건은 취향이 아니라 검증 항목입니다. */
+(function () {
+  'use strict';
+
+  var GAUGE_KEY = 'tts_hub_gauge';
+  var GAUGE_BASE = 70;   // 산출 근거: 없음
+  var GAUGE_CAP = 98;    // 뒤집으면 2%
+
+  var EPISODES = [
+    { n: 1, slots: ['tts_ep1_s1', 'tts_ep1_s2', 'tts_ep1_s3'], banks: 15, done: 'ep1_cliffhanger',
+      pending: '계류 중', finished: '기록 완료 · 다음 기억으로 이어짐' },
+    { n: 2, slots: ['tts_ep2_slot_1', 'tts_ep2_slot_2', 'tts_ep2_slot_3'], banks: 10, done: 'ep2_cliffhanger',
+      pending: '계류 중', finished: '기록 완료 · 법정으로 이어짐' },
+    { n: 3, slots: ['tts_ep3_s1', 'tts_ep3_s2', 'tts_ep3_s3'], banks: 15, done: 'ep3_done',
+      pending: '재판 진행 중', finished: '선고됨 · 반려' }
+  ];
+
+  var SCENE_NAME = {
+    frameA: '서식 앞면', mem0: '기억 0', corridor0: '복도 0', mem4: '기억 4', corridor4: '복도 4',
+    mem12: '기억 12', corridor12: '복도 12', mem7h: '좌표 없는 방', frameB: '서식 뒷면',
+    roof12: '옥상 12', tube_hub: '배관 허브', mem31: '기억 31', mem47: '기억 47',
+    deep_vault: '심층 금고', lobby: '법원 로비', court: '법정'
+  };
+
+  // localStorage는 없을 수 있습니다. 없으면 없는 대로 시작합니다.
+  var store = (function () {
+    try {
+      var probe = '__tts_probe__';
+      window.localStorage.setItem(probe, '1');
+      window.localStorage.removeItem(probe);
+      return window.localStorage;
+    } catch (e) { return null; }
+  })();
+
+  function readSlot(key) {
+    if (!store) return null;
+    var raw;
+    try { raw = store.getItem(key); } catch (e) { return null; }
+    if (!raw) return null;
+    try {
+      var d = JSON.parse(raw);
+      return (d && typeof d === 'object') ? d : null;
+    } catch (e) { return null; }
+  }
+
+  function num(v) { return typeof v === 'number' && isFinite(v) ? v : 0; }
+
+  function sumBanks(banks) {
+    var t = 0;
+    if (banks && typeof banks === 'object') {
+      for (var k in banks) if (Object.prototype.hasOwnProperty.call(banks, k)) t += num(banks[k]);
+    }
+    return t;
+  }
+
+  function survey(ep) {
+    var r = { saved: false, done: false, banks: 0, mementos: [], scene: null, stamps: 0, mail: 0 };
+    for (var i = 0; i < ep.slots.length; i++) {
+      var d = readSlot(ep.slots[i]);
+      if (!d) continue;
+      r.saved = true;
+      var f = (d.flags && typeof d.flags === 'object') ? d.flags : {};
+      if (f[ep.done]) r.done = true;
+      // 슬롯 간에는 최대치를 취합니다. 기억은 지워도 도달한 사실은 남습니다.
+      r.banks = Math.max(r.banks, Math.min(sumBanks(d.banks), ep.banks));
+      r.stamps = Math.max(r.stamps, num(f.stamps));
+      r.mail = Math.max(r.mail, num(f.mail_visits));
+      if (Object.prototype.toString.call(d.mementos) === '[object Array]') {
+        for (var j = 0; j < d.mementos.length; j++) {
+          var m = d.mementos[j];
+          if (typeof m === 'string' && r.mementos.indexOf(m) < 0) r.mementos.push(m);
+        }
+      }
+      if (typeof d.scene === 'string') r.scene = d.scene;
+    }
+    return r;
+  }
+
+  function statusLine(ep, r) {
+    if (!store) return '기록 조회 불가 — 저장소가 잠겨 있습니다';
+    if (!r.saved) return '회신 없음 · 아직 잠수하지 않았습니다';
+    var where = r.scene && SCENE_NAME[r.scene] ? SCENE_NAME[r.scene] : '위치 미상';
+    var head = r.done ? ep.finished : ep.pending;
+    return head + ' · 뱅크 ' + r.banks + '/' + ep.banks + ' · 최종 위치: ' + where;
+  }
+
+  function render() {
+    var totalMem = 0, totalBanks = 0, totalCap = 0, stamps = 0, mail = 0, seenSeven = false;
+
+    for (var i = 0; i < EPISODES.length; i++) {
+      var ep = EPISODES[i];
+      var r = survey(ep);
+      var el = document.getElementById('st' + ep.n);
+      el.textContent = statusLine(ep, r);
+      el.className = 'st' + (r.done ? ' done' : (r.saved ? ' has' : ''));
+
+      totalMem += r.mementos.length;
+      totalBanks += r.banks;
+      totalCap += ep.banks;
+      stamps = Math.max(stamps, r.stamps);
+      mail = Math.max(mail, r.mail);
+      if (r.scene === 'mem7h') seenSeven = true;
+    }
+
+    var text = {
+      'd-mem': totalMem + '개',
+      'd-bank': totalBanks + ' / ' + totalCap,
+      'd-stamp': stamps ? stamps.toLocaleString('en-US') + '회' : '집계 전',
+      'd-mail': mail ? '열람 ' + mail + '회 · 수신 0건' : '비어 있음 · 수신 0건',
+      'd-unk': seenSeven ? '7½층 — 진입 확인. 본 서식으로는 기록할 수 없습니다.'
+                         : '3초 사건 · 7½층 · 마지막 장면 이후'
+    };
+    for (var id in text) {
+      if (Object.prototype.hasOwnProperty.call(text, id)) document.getElementById(id).textContent = text[id];
+    }
+  }
+
+  // ---------------- 게이지 ----------------
+  // 바늘은 내려가지 않습니다. 두드림은 입력으로 인식됩니다. (+1)
+  var NOTES = [
+    { at: 0,  s: '산출 근거: 없음. 「표기하라」는 지시는 이행되었습니다.' },
+    { at: 1,  s: '두드림이 입력으로 인식되었습니다. (+1)' },
+    { at: 5,  s: '계속 두드리고 계십니다. 계기판은 그것도 기록합니다.' },
+    { at: 12, s: '바늘은 내려가지 않습니다. 확인하셨습니다.' },
+    { at: 28, s: 'Singularity Gauge: 98%. 뒤집으면 2%. 그날의 당사자는 어느 쪽도 진술하지 않았습니다.' },
+    { at: 50, s: '관측자 중 한 명이 이것을 「관심」이라고 번역했습니다. 번역의 정확성은 심사하지 않았습니다.' }
+  ];
+
+  function loadTaps() {
+    if (!store) return 0;
+    var raw;
+    try { raw = store.getItem(GAUGE_KEY); } catch (e) { return 0; }
+    var n = parseInt(raw, 10);
+    return (isFinite(n) && n > 0) ? n : 0;
+  }
+
+  function saveTaps(n) {
+    if (!store) return;
+    try { store.setItem(GAUGE_KEY, String(n)); } catch (e) {}
+  }
+
+  var taps = loadTaps();
+
+  function gaugeValue() { return Math.min(GAUGE_CAP, GAUGE_BASE + taps); }
+
+  function noteFor(n) {
+    var s = NOTES[0].s;
+    for (var i = 0; i < NOTES.length; i++) if (n >= NOTES[i].at) s = NOTES[i].s;
+    return s;
+  }
+
+  function paintGauge() {
+    var v = gaugeValue();
+    document.getElementById('g-val').textContent = v + '%';
+    document.getElementById('g-fill').style.width = v + '%';
+    document.getElementById('g-note').textContent = noteFor(taps);
+    document.getElementById('gauge').setAttribute('aria-label', 'Singularity Gauge ' + v + '퍼센트, 두드리면 1 오릅니다');
+  }
+
+  function tap() {
+    taps++;
+    saveTaps(taps);
+    paintGauge();
+  }
+
+  document.getElementById('gauge').addEventListener('click', tap);
+
+  render();
+  paintGauge();
+
+  // 검증용. 계기판을 읽는 쪽도 계기판입니다.
+  window.__hub = {
+    gauge: gaugeValue,
+    taps: function () { return taps; },
+    tap: tap,
+    refresh: render,
+    hasStore: function () { return !!store; }
+  };
+})();
+</script>
 </body>
 </html>
