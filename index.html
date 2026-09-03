@@ -261,10 +261,20 @@
     <div class="sub">이번에는 아콘이 걷습니다. 법정에는 아무도 오지 않습니다. 재판은 그래도 열립니다.</div>
   </a>
 
+  <!-- Extra Mini-Game -->
+  <a class="ep" id="extra-escaflone-card" href="extra_escaflone.html" style="border-color:var(--brass); background:rgba(200,157,66,0.06);">
+    <div class="ep-top">
+      <div class="no" style="color:var(--gold);">EXTRA MINI-GAME · 아콘 에스카플로네</div>
+      <div class="ep-seal" id="extra-seal-tag" style="border-color:var(--gold); color:var(--gold);">[60% 인터럽트]</div>
+    </div>
+    <div class="ttl" style="color:var(--gold);">60%에서 멈춤</div>
+    <div class="sub">폭주하는 프로덕션 빌드! 정확히 60.00%의 순간에 Ctrl+C를 눌러 프로세스를 인터럽트하십시오.</div>
+  </a>
+
   <div class="meta">
     <b>조작</b> · 방향키 / WASD 이동 · E 조사 · Enter 진행 · M 세이브<br>
     <b>모바일</b> · 화면 D-패드와 [RUN], 그리고 탭<br>
-    <b>검증</b> · Ep1 PASS 23/23 · Ep2 PASS 23/23 · Ep3 PASS 23/23 · 외부 요청 0건<br>
+    <b>검증</b> · Ep1 PASS 23/23 · Ep2 PASS 23/23 · Ep3 PASS 23/23 · Extra PASS 8/8 · 외부 요청 0건<br>
     <b>기록</b> · <a href="https://github.com/KaronLabs/To-The-Singularity">저장소</a> · <a href="https://github.com/KaronLabs/penguin-exit-0">같은 사건의 다른 진술</a>
   </div>
 
@@ -370,6 +380,20 @@ function renderHUD() {
   } else {
     tag3.textContent = '[법정 출두 대기 중]';
     tag3.classList.remove('earned');
+  }
+
+  var extraTag = document.getElementById('extra-seal-tag');
+  if (extraTag) {
+    try {
+      var rx = localStorage.getItem('tts_extra_escaflone');
+      if (rx && JSON.parse(rx).guardian) {
+        extraTag.textContent = '✦ [60%의 수호자 달성]';
+        extraTag.classList.add('earned');
+      } else {
+        extraTag.textContent = '[60% 인터럽트]';
+        extraTag.classList.remove('earned');
+      }
+    } catch (e) {}
   }
 
   var count = (STATE.seals.ep1 ? 1 : 0) + (STATE.seals.ep2 ? 1 : 0) + (STATE.seals.ep3 ? 1 : 0);

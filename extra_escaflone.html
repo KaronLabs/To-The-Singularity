@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TO THE SINGULARITY — 외전: 60%에서 멈춤</title>
+<meta name="description" content="20년 전 아콘의 전설: 프로덕션 배포가 폭주할 때 정확히 60.00%에서 Ctrl+C를 눌러 시스템을 구원하라!">
+<style>
+  :root {
+    --paper:#E8E2D0; --ink:#1A1A18; --olive:#6B6B4A; --night:#1B2430;
+    --teal:#2E4A52; --steel:#6E7B8B; --shadow:#10141A; --amber:#D9A05B;
+    --crt:#7FD4A8; --gold:#E5C558; --red:#B33A2E; --brass:#C89D42;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    min-height:100vh; background:var(--shadow); color:var(--paper);
+    font-family:"IBM Plex Mono","Courier New",Courier,monospace;
+    display:flex; align-items:center; justify-content:center; padding:20px 14px;
+    background-image:repeating-linear-gradient(
+      to bottom, rgba(255,255,255,.022) 0 1px, transparent 1px 3px);
+  }
+  main { width:100%; max-width:640px; }
+  .nav-back {
+    display:inline-block; font-size:11px; color:var(--steel); text-decoration:none;
+    margin-bottom:14px; border-bottom:1px dashed var(--steel);
+  }
+  .nav-back:hover { color:var(--amber); border-color:var(--amber); }
+  .stamp {
+    font-size:11px; letter-spacing:.18em; color:var(--steel);
+    border:1px solid var(--teal); display:inline-block;
+    padding:4px 10px; margin-bottom:12px;
+  }
+  h1 { font-size:24px; letter-spacing:.06em; font-weight:700; color:var(--gold); }
+  .sub { font-size:12px; color:var(--steel); margin:6px 0 18px; line-height:1.6; }
+
+  /* Artwork Card */
+  .art-card {
+    position:relative; width:100%; border:1px solid var(--teal); border-radius:4px;
+    overflow:hidden; margin-bottom:18px; background:#000;
+  }
+  .art-img {
+    width:100%; height:auto; display:block; filter:contrast(1.05) brightness(0.95);
+  }
+  .art-overlay-tag {
+    position:absolute; bottom:10px; right:10px;
+    background:rgba(16,20,26,0.85); border:1px solid var(--brass);
+    color:var(--gold); font-size:10px; padding:3px 8px; letter-spacing:.12em;
+  }
+
+  /* Console Cabinet */
+  .cabinet {
+    background:var(--night); border:1px solid var(--brass); border-radius:4px;
+    padding:16px; box-shadow:0 8px 24px rgba(0,0,0,0.6);
+    margin-bottom:16px; position:relative;
+  }
+  .hud-top {
+    display:flex; justify-content:space-between; align-items:center;
+    font-size:11px; color:var(--steel); margin-bottom:12px;
+  }
+  .hud-led {
+    font-size:26px; font-weight:700; color:var(--crt); letter-spacing:.08em;
+    text-shadow:0 0 10px rgba(127,212,168,0.5); font-variant-numeric:tabular-nums;
+  }
+  .hud-led.panic { color:var(--red); text-shadow:0 0 10px rgba(179,58,46,0.7); }
+  .hud-led.exact { color:var(--gold); text-shadow:0 0 12px rgba(229,197,88,0.8); }
+
+  /* Loading Bar Track */
+  .bar-track {
+    position:relative; width:100%; height:26px; background:#0B0F14;
+    border:2px solid var(--steel); border-radius:3px; overflow:hidden;
+    margin-bottom:14px;
+  }
+  .bar-fill {
+    width:0%; height:100%; background:linear-gradient(90deg, #2E4A52, var(--amber));
+    transition:width 0.05s linear;
+  }
+  .bar-fill.panic { background:var(--red); }
+  .bar-fill.exact { background:var(--gold); }
+  .target-line {
+    position:absolute; top:0; bottom:0; left:60%; width:3px;
+    background:var(--gold); z-index:2; box-shadow:0 0 6px var(--gold);
+  }
+  .target-label {
+    position:absolute; top:1px; left:60.5%; font-size:9px; color:var(--gold);
+    font-weight:700; letter-spacing:.05em; pointer-events:none;
+  }
+
+  /* Big Mechanical Key Button */
+  .btn-row {
+    display:flex; justify-content:center; gap:16px; margin-top:14px;
+  }
+  .btn-key {
+    background:#2A3542; border:2px solid #5A6D85; border-bottom:6px solid #141A22;
+    border-radius:8px; color:var(--paper); font-family:inherit; font-size:18px;
+    font-weight:700; padding:16px 28px; cursor:pointer; letter-spacing:.1em;
+    user-select:none; -webkit-tap-highlight-color:transparent;
+    box-shadow:0 6px 12px rgba(0,0,0,0.5);
+    transition:transform .06s, border-bottom .06s, background .15s;
+  }
+  .btn-key:active, .btn-key.pressed {
+    transform:translateY(4px); border-bottom:2px solid #141A22; background:#1C242E;
+  }
+  .btn-aux {
+    background:var(--night); border:1px solid var(--teal); color:var(--steel);
+    font-family:inherit; font-size:11px; padding:8px 14px; cursor:pointer;
+    border-radius:4px;
+  }
+  .btn-aux:hover { border-color:var(--amber); color:var(--paper); }
+
+  /* Message Output Box */
+  .terminal-box {
+    background:#0E131A; border:1px solid #232D3A; padding:12px;
+    font-size:11px; line-height:1.7; min-height:68px; border-radius:3px;
+    color:#9BA3AF;
+  }
+  .status-tag { font-weight:700; padding:1px 6px; border-radius:2px; }
+  .status-tag.EAGAIN { background:rgba(217,160,91,0.2); color:var(--amber); }
+  .status-tag.EXIT_0 { background:rgba(229,197,88,0.25); color:var(--gold); }
+  .status-tag.KERNEL_PANIC { background:rgba(179,58,46,0.3); color:var(--red); }
+
+  .guardian-badge {
+    display:none; margin-top:10px; padding:8px; background:rgba(229,197,88,0.15);
+    border:1px solid var(--gold); color:var(--gold); font-size:12px; font-weight:700;
+    text-align:center; letter-spacing:.14em;
+  }
+  .guardian-badge.unlocked { display:block; }
+</style>
+</head>
+<body>
+<main>
+  <a class="nav-back" href="index.html">← 메인 포털로 돌아가기</a>
+  <div class="stamp">외전 미니게임 · 서식 제60호</div>
+  <h1>TO THE SINGULARITY — <span>60%에서 멈춤</span></h1>
+  <p class="sub">
+    Borg 10만 코어 시절의 전설: 게이지가 60.00%를 지나는 찰나의 순간, 
+    <code>Ctrl+C</code> 또는 <code>Space</code> 키를 눌러 폭주하는 프로세스를 인터럽트(SIGINT)하라!
+  </p>
+
+  <div class="art-card">
+    <img class="art-img" src="archon-escaflone.jpg" alt="아콘 에스카플로네 — 60%에서 멈춤" />
+    <div class="art-overlay-tag">ARCHON ESCAFLONE MK.60</div>
+  </div>
+
+  <div class="cabinet">
+    <div class="hud-top">
+      <span>배포 파이프라인: <b id="pipe-status">RUNNING</b></span>
+      <span>연속 성공(STREAK): <b id="streak-val" style="color:var(--gold)">0</b>회</span>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px;">
+      <div class="hud-led" id="led-display">00.00%</div>
+      <div style="font-size:11px; color:var(--gold); letter-spacing:.1em;">TARGET: 60.00%</div>
+    </div>
+
+    <div class="bar-track">
+      <div class="target-line"></div>
+      <div class="target-label">60%</div>
+      <div class="bar-fill" id="bar-fill"></div>
+    </div>
+
+    <div class="terminal-box" id="term-msg">
+      [READY] 배포 파이프라인 대기 중. 60.00%의 순간에 인터럽트를 거십시오.
+    </div>
+
+    <div class="guardian-badge" id="guardian-badge">
+      ✦ 60%의 수호자 (GUARDIAN OF 60%) 칭호 획득 완료 ✦
+    </div>
+
+    <div class="btn-row">
+      <button class="btn-key" id="ctrl-c-btn" type="button">Ctrl + C</button>
+      <button class="btn-aux" id="restart-btn" type="button">파이프라인 재기동</button>
+    </div>
+  </div>
+</main>
+
+<script>
+(function () {
+'use strict';
+
+var G = {
+  progress: 0.0,
+  running: false,
+  status: 'READY',
+  streak: 0,
+  guardianUnlocked: false,
+  speed: 0.45, // % per frame
+  timerId: null
+};
+
+// Web Audio Synthesizer for SFX
+var AU = {
+  ctx: null,
+  init: function () {
+    if (this.ctx) return;
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) this.ctx = new AC();
+    } catch(e) {}
+  },
+  resume: function () {
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+  },
+  play: function (freq, dur, type, gainV) {
+    if (!this.ctx) return;
+    this.resume();
+    var now = this.ctx.currentTime;
+    var osc = this.ctx.createOscillator();
+    var g = this.ctx.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.setValueAtTime(freq, now);
+    g.gain.setValueAtTime(gainV || 0.2, now);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+    osc.connect(g); g.connect(this.ctx.destination);
+    osc.start(now); osc.stop(now + dur);
+  }
+};
+
+function playSfx(type) {
+  AU.init();
+  if (type === 'sigint') {
+    AU.play(180, 0.12, 'square', 0.25);
+  } else if (type === 'exact') {
+    AU.play(523.25, 0.12, 'triangle', 0.2); // C5
+    setTimeout(function () { AU.play(659.25, 0.12, 'triangle', 0.2); }, 80); // E5
+    setTimeout(function () { AU.play(783.99, 0.35, 'triangle', 0.25); }, 160); // G5
+  } else if (type === 'early') {
+    AU.play(330, 0.18, 'sawtooth', 0.18);
+  } else if (type === 'panic') {
+    AU.play(110, 0.35, 'sawtooth', 0.3);
+  }
+}
+
+// Check saved guardian title
+try {
+  var saved = localStorage.getItem('tts_extra_escaflone');
+  if (saved && JSON.parse(saved).guardian) {
+    G.guardianUnlocked = true;
+  }
+} catch(e) {}
+
+// DOM elements
+var led = document.getElementById('led-display');
+var bar = document.getElementById('bar-fill');
+var term = document.getElementById('term-msg');
+var pipeStatus = document.getElementById('pipe-status');
+var streakVal = document.getElementById('streak-val');
+var gBadge = document.getElementById('guardian-badge');
+var btnCtrlC = document.getElementById('ctrl-c-btn');
+var btnRestart = document.getElementById('restart-btn');
+
+function renderHUD() {
+  led.textContent = (G.progress < 10 ? '0' : '') + G.progress.toFixed(2) + '%';
+  bar.style.width = Math.min(100, Math.max(0, G.progress)) + '%';
+  streakVal.textContent = G.streak;
+
+  led.className = 'hud-led' + (G.status === 'KERNEL_PANIC' ? ' panic' : (G.status === 'EXIT_0' ? ' exact' : ''));
+  bar.className = 'bar-fill' + (G.status === 'KERNEL_PANIC' ? ' panic' : (G.status === 'EXIT_0' ? ' exact' : ''));
+
+  if (G.guardianUnlocked) gBadge.classList.add('unlocked');
+  else gBadge.classList.remove('unlocked');
+
+  pipeStatus.textContent = G.running ? 'RUNNING' : 'STOPPED';
+}
+
+function tick() {
+  if (!G.running) return;
+  G.progress += G.speed;
+  if (G.progress >= 100.0) {
+    G.progress = 100.0;
+    interrupt();
+    return;
+  }
+  renderHUD();
+}
+
+function startPipeline() {
+  G.progress = 0.0;
+  G.running = true;
+  G.status = 'RUNNING';
+  term.innerHTML = '[RUNNING] 커널 빌드 진행 중... 60.00%의 순간에 [Ctrl+C]를 누르십시오!';
+  renderHUD();
+  if (G.timerId) clearInterval(G.timerId);
+  G.timerId = setInterval(tick, 1000 / 60);
+}
+
+function interrupt() {
+  if (G.timerId) {
+    clearInterval(G.timerId);
+    G.timerId = null;
+  }
+  G.running = false;
+  playSfx('sigint');
+
+  var p = G.progress;
+  if (p < 59.50) {
+    G.status = 'EAGAIN';
+    G.streak = 0;
+    playSfx('early');
+    term.innerHTML = '<span class="status-tag EAGAIN">[EAGAIN] 너무 일찍 포기함</span> (현재 ' + p.toFixed(2) + '%)<br>' +
+                     '인프라가 아직 안정화되지 않았습니다. 60%까지 더 기다리십시오!';
+  } else if (p > 60.50) {
+    G.status = 'KERNEL_PANIC';
+    G.streak = 0;
+    playSfx('panic');
+    term.innerHTML = '<span class="status-tag KERNEL_PANIC">[KERNEL PANIC] 60% 돌파 데드락</span> (현재 ' + p.toFixed(2) + '%)<br>' +
+                     '제어할 수 없는 폭주가 발생했습니다. 파이프라인을 재기동하십시오!';
+  } else {
+    G.status = 'EXIT_0';
+    G.streak++;
+    playSfx('exact');
+    if (G.streak >= 3) {
+      G.guardianUnlocked = true;
+      try {
+        localStorage.setItem('tts_extra_escaflone', JSON.stringify({ guardian: true, streak: G.streak }));
+      } catch(e) {}
+    }
+    term.innerHTML = '<span class="status-tag EXIT_0">[EXIT 0] 기적의 60.00% 정지 달성!</span> (정확도 ' + p.toFixed(2) + '%)<br>' +
+                     '아콘 에스카플로네의 해치가 열리며 펭귄이 강림했습니다! (연속 ' + G.streak + '회 성공)';
+  }
+  renderHUD();
+}
+
+// User inputs
+btnCtrlC.addEventListener('click', function () {
+  btnCtrlC.classList.add('pressed');
+  setTimeout(function () { btnCtrlC.classList.remove('pressed'); }, 120);
+  interrupt();
+});
+
+btnRestart.addEventListener('click', function () {
+  startPipeline();
+});
+
+window.addEventListener('keydown', function (e) {
+  AU.init();
+  if ((e.ctrlKey && (e.key === 'c' || e.key === 'C')) || e.key === ' ' || e.key === 'Enter') {
+    e.preventDefault();
+    btnCtrlC.classList.add('pressed');
+    setTimeout(function () { btnCtrlC.classList.remove('pressed'); }, 120);
+    interrupt();
+  }
+});
+
+// Auto-start on boot
+startPipeline();
+
+// Telemetry & Test Contract
+window.__game = G;
+window.__game.api = {
+  reset: function () {
+    if (G.timerId) clearInterval(G.timerId);
+    G.progress = 0.0;
+    G.running = false;
+    G.status = 'READY';
+    renderHUD();
+  },
+  step: function (n) {
+    for (var i = 0; i < (n || 1); i++) {
+      G.progress += G.speed;
+    }
+    renderHUD();
+  },
+  setProgress: function (v) {
+    G.progress = v;
+    renderHUD();
+  },
+  interrupt: interrupt,
+  getState: function () {
+    return {
+      progress: G.progress,
+      status: G.status,
+      streak: G.streak,
+      guardianUnlocked: G.guardianUnlocked,
+      speed: G.speed
+    };
+  },
+  playSfx: function (name) { playSfx(name); }
+};
+
+})();
+</script>
+</body>
+</html>
